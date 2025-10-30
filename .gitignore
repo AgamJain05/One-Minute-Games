@@ -1,0 +1,72 @@
+# Dependencies and caches
+node_modules/
+**/node_modules/
+.pnpm-store/
+.cache/
+**/.cache/
+.tmp/
+.temp/
+
+# Build outputs
+frontend/dist/
+**/dist/
+**/build/
+
+# Environment files
+.env
+**/.env
+.env.*
+**/.env.*
+
+# Logs
+logs/
+**/logs/
+*.log
+npm-debug.log*
+yarn-debug.log*
+yarn-error.log*
+.pnpm-debug.log*
+
+# Coverage and test artifacts
+coverage/
+**/coverage/
+.nyc_output/
+playwright-report/
+**/playwright-report/
+playwright/.cache/
+**/test-results/
+**/screenshots/
+**/videos/
+
+# Test directories (ignored from VCS)
+backend/__tests__/
+frontend/src/__tests__/
+e2e/
+
+# IDE/editor files
+.vscode/
+.idea/
+*.iml
+.DS_Store
+Thumbs.db
+
+# Misc
+*.tsbuildinfo
+.eslintcache
+stylelintcache
+
+# Render / deployment
+.vercel/
+.turbo/
+
+# Local database dumps/backups
+*.dump
+*.mongodb*
+
+# Documentation: ignore all READMEs
+README.md
+**/README.md
+**/README_*.md
+**/readme.md
+**/Readme.md
+**/[Rr][Ee][Aa][Dd][Mm][Ee]*

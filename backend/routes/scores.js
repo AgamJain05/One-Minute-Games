@@ -1,0 +1,124 @@
+import express from 'express';
+const router = express.Router();
+import Score from '../models/Score.js';
+import User from '../models/User.js';
+import auth from '../middleware/auth.js';
+
+// @route   POST /api/scores
+// @desc    Submit a new score
+// @access  Private
+router.post('/', auth, async (req, res) => {
+  try {
+    const { gameId, score, accuracy, correctAnswers, totalAttempts, metadata } = req.body;
+
+    const newScore = new Score({
+      userId: req.userId,
+      gameId,
+      score,
+      accuracy,
+      correctAnswers,
+      totalAttempts,
+      metadata
+    });
+
+    await newScore.save();
+
+    // Update user stats
+    const user = await User.findById(req.userId);
+    user.gamesPlayed += 1;
+    user.totalXP += Math.floor(score / 10); // 1 XP per 10 points
+    user.calculateLevel();
+
+    // Update streak
+    const today = new Date().toDateString();
+    const lastPlayed = user.lastPlayedDate ? new Date(user.lastPlayedDate).toDateString() : null;
+    
+    if (lastPlayed === today) {
+      // Already played today, don't change streak
+    } else if (lastPlayed === new Date(Date.now() - 86400000).toDateString()) {
+      // Played yesterday, increment streak
+      user.currentStreak += 1;
+      user.longestStreak = Math.max(user.currentStreak, user.longestStreak);
+    } else {
+      // Streak broken, reset
+      user.currentStreak = 1;
+    }
+    user.lastPlayedDate = new Date();
+
+    await user.save();
+
+    res.status(201).json({
+      score: newScore,
+      user: {
+        level: user.level,
+        totalXP: user.totalXP,
+        currentStreak: user.currentStreak,
+        gamesPlayed: user.gamesPlayed
+      }
+    });
+  } catch (error) {
+    console.error(error);
+    res.status(500).json({ message: 'Server error' });
+  }
+});
+
+// @route   GET /api/scores/my/:gameId
+// @desc    Get user's scores for a specific game
+// @access  Private
+router.get('/my/:gameId', auth, async (req, res) => {
+  try {
+    const scores = await Score.find({
+      userId: req.userId,
+      gameId: req.params.gameId
+    }).sort({ score: -1 }).limit(10);
+
+    const bestScore = scores.length > 0 ? scores[0] : null;
+
+    res.json({
+      scores,
+      bestScore
+    });
+  } catch (error) {
+    console.error(error);
+    res.status(500).json({ message: 'Server error' });
+  }
+});
+
+// @route   GET /api/scores/leaderboard/:gameId
+// @desc    Get leaderboard for a specific game
+// @access  Public
+router.get('/leaderboard/:gameId', async (req, res) => {
+  try {
+    const limit = parseInt(req.query.limit) || 10;
+    const leaderboard = await Score.getLeaderboard(req.params.gameId, limit);
+
+    res.json(leaderboard);
+  } catch (error) {
+    console.error(error);
+    res.status(500).json({ message: 'Server error' });
+  }
+});
+
+// @route   GET /api/scores/recent
+// @desc    Get recent scores for current user
+// @access  Private
+router.get('/recent', auth, async (req, res) => {
+  try {
+    const limit = parseInt(req.query.limit) || 5;
+    const scores = await Score.find({ userId: req.userId })
+      .sort({ createdAt: -1 })
+      .limit(limit)
+      .populate('gameId', 'name icon');
+
+    res.json(scores);
+  } catch (error) {
+    console.error(error);
+    res.status(500).json({ message: 'Server error' });
+  }
+});
+
+export default router;
+
+
+
+
