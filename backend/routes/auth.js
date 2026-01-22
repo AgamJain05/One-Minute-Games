@@ -4,6 +4,18 @@ import { body, validationResult } from 'express-validator';
 import jwt from 'jsonwebtoken';
 import User from '../models/User.js';
 
+// Security: Ensure JWT_SECRET is set in production
+const getJwtSecret = () => {
+  const secret = process.env.JWT_SECRET;
+  if (!secret && process.env.NODE_ENV === 'production') {
+    throw new Error('FATAL: JWT_SECRET must be set in production environment');
+  }
+  if (!secret) {
+    console.warn('⚠️  WARNING: Using fallback JWT secret. Set JWT_SECRET in .env for production!');
+  }
+  return secret || 'fallback_secret_key_for_development_only';
+};
+
 // @route   POST /api/auth/register
 // @desc    Register a new user
 // @access  Public
@@ -33,10 +45,9 @@ router.post('/register', [
     await user.save();
 
     // Generate JWT
-    const jwtSecret = process.env.JWT_SECRET || 'fallback_secret_key_for_development_only';
     const token = jwt.sign(
       { userId: user._id },
-      jwtSecret,
+      getJwtSecret(),
       { expiresIn: process.env.JWT_EXPIRE || '7d' }
     );
 
@@ -94,10 +105,9 @@ router.post('/login', [
     }
 
     // Generate JWT
-    const jwtSecret = process.env.JWT_SECRET || 'fallback_secret_key_for_development_only';
     const token = jwt.sign(
       { userId: user._id },
-      jwtSecret,
+      getJwtSecret(),
       { expiresIn: process.env.JWT_EXPIRE || '7d' }
     );
 

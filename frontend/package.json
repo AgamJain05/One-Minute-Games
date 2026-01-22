@@ -2,6 +2,7 @@
   "name": "oneminutelab-frontend",
   "version": "1.0.0",
   "description": "Frontend React application for OneMinuteLab",
+  "type": "module",
   "private": true,
   "dependencies": {
     "@dnd-kit/core": "^6.0.8",
@@ -26,6 +27,7 @@
     "@testing-library/user-event": "^14.6.1",
     "@vitejs/plugin-react": "^4.0.4",
     "autoprefixer": "^10.4.15",
+    "baseline-browser-mapping": "^2.9.17",
     "eslint": "^8.48.0",
     "eslint-plugin-react": "^7.33.2",
     "eslint-plugin-react-hooks": "^4.6.0",

@@ -23,28 +23,42 @@ router.post('/', auth, async (req, res) => {
 
     await newScore.save();
 
-    // Update user stats
-    const user = await User.findById(req.userId);
-    user.gamesPlayed += 1;
-    user.totalXP += Math.floor(score / 10); // 1 XP per 10 points
-    user.calculateLevel();
-
-    // Update streak
+    // Update user stats atomically to prevent race conditions
+    const xpGain = Math.floor(score / 10); // 1 XP per 10 points
     const today = new Date().toDateString();
+    
+    // First, get the user to check streak logic
+    let user = await User.findById(req.userId);
     const lastPlayed = user.lastPlayedDate ? new Date(user.lastPlayedDate).toDateString() : null;
     
+    // Determine streak update
+    let streakUpdate = {};
     if (lastPlayed === today) {
       // Already played today, don't change streak
     } else if (lastPlayed === new Date(Date.now() - 86400000).toDateString()) {
       // Played yesterday, increment streak
-      user.currentStreak += 1;
-      user.longestStreak = Math.max(user.currentStreak, user.longestStreak);
+      const newStreak = user.currentStreak + 1;
+      streakUpdate = {
+        currentStreak: newStreak,
+        longestStreak: Math.max(newStreak, user.longestStreak)
+      };
     } else {
       // Streak broken, reset
-      user.currentStreak = 1;
+      streakUpdate = { currentStreak: 1 };
     }
-    user.lastPlayedDate = new Date();
 
+    // Use atomic update to prevent race conditions
+    user = await User.findByIdAndUpdate(
+      req.userId,
+      {
+        $inc: { gamesPlayed: 1, totalXP: xpGain },
+        $set: { lastPlayedDate: new Date(), ...streakUpdate }
+      },
+      { new: true }
+    );
+    
+    // Calculate level after atomic update
+    user.calculateLevel();
     await user.save();
 
     res.status(201).json({

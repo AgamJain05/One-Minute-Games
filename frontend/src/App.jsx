@@ -1,6 +1,7 @@
 import { Routes, Route, Navigate } from 'react-router-dom';
 import { useAuthStore } from '@store/authStore';
 import Layout from '@components/Layout';
+import Landing from '@/pages/Landing';
 import Home from '@/pages/Home';
 import Login from '@/pages/Login';
 import Register from '@/pages/Register';
@@ -18,10 +19,14 @@ function App() {
 
   return (
     <Routes>
+      {/* Landing page - no layout, full custom design */}
+      <Route path="/" element={user ? <Navigate to="/games" /> : <Landing />} />
+      <Route path="/login" element={user ? <Navigate to="/games" /> : <Login />} />
+      <Route path="/register" element={user ? <Navigate to="/games" /> : <Register />} />
+      
+      {/* Authenticated routes with layout */}
       <Route element={<Layout />}>
-        <Route path="/" element={<Home />} />
-        <Route path="/login" element={user ? <Navigate to="/" /> : <Login />} />
-        <Route path="/register" element={user ? <Navigate to="/" /> : <Register />} />
+        <Route path="/games" element={user ? <Home /> : <Navigate to="/login" />} />
         <Route path="/profile" element={user ? <Profile /> : <Navigate to="/login" />} />
         {/* <Route path="/leaderboard" element={<Leaderboard />} /> */}
         
@@ -32,8 +37,9 @@ function App() {
         
         <Route path="/game/:gameId" element={<GameRouter />} />
         <Route path="/admin/metrics" element={user ? <AdminMetrics /> : <Navigate to="/login" />} />
-        <Route path="*" element={<Navigate to="/" />} />
       </Route>
+      
+      <Route path="*" element={<Navigate to="/" />} />
     </Routes>
   );
 }

@@ -42,8 +42,6 @@ router.post('/signup', auth, async (req, res) => {
   }
 });
 
-export default router;
-
 // Summary metrics (auth optional; tighten later if needed)
 router.get('/summary', auth, async (req, res) => {
   try {
@@ -82,5 +80,7 @@ router.get('/summary', auth, async (req, res) => {
     res.status(500).json({ message: 'Failed to load analytics summary' });
   }
 });
+
+export default router;
 
 

@@ -1,5 +1,17 @@
 import jwt from 'jsonwebtoken';
 
+// Security: Ensure JWT_SECRET is set in production
+const getJwtSecret = () => {
+  const secret = process.env.JWT_SECRET;
+  if (!secret && process.env.NODE_ENV === 'production') {
+    throw new Error('FATAL: JWT_SECRET must be set in production environment');
+  }
+  if (!secret) {
+    console.warn('⚠️  WARNING: Using fallback JWT secret. Set JWT_SECRET in .env for production!');
+  }
+  return secret || 'fallback_secret_key_for_development_only';
+};
+
 export default (req, res, next) => {
   // Get token from header
   const authHeader = req.header('Authorization');
@@ -21,7 +33,7 @@ export default (req, res, next) => {
 
   try {
     // Verify token
-    const jwtSecret = process.env.JWT_SECRET || 'fallback_secret_key_for_development_only';
+    const jwtSecret = getJwtSecret();
     const decoded = jwt.verify(token, jwtSecret);
     req.userId = decoded.userId;
     next();
