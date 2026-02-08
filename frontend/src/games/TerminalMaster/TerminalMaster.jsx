@@ -13,15 +13,12 @@ import {
   Target,
   Sparkles
 } from 'lucide-react';
+import { useAuthStore } from '@store/authStore';
+import { questionsAPI, answersAPI, scoresAPI } from '@services/api';
 import Results from './components/Results';
-import {
-  TERMINAL_SCENARIOS,
-  COMMAND_BUILDER_CHALLENGES,
-  QUICK_FIRE_COMMANDS,
-  COMMAND_MNEMONICS
-} from './data';
 
 export default function TerminalMaster() {
+  const { user } = useAuthStore();
   // Game state
   const [gameMode, setGameMode] = useState(null); // null = menu, 'scenario', 'builder', 'quickfire'
   const [currentQuestion, setCurrentQuestion] = useState(0);
@@ -38,9 +35,27 @@ export default function TerminalMaster() {
   const [shuffledOptions, setShuffledOptions] = useState([]);
   const [showHint, setShowHint] = useState(false);
   const [showMnemonic, setShowMnemonic] = useState(false);
+  
+  // API state
+  const [questionCount, setQuestionCount] = useState(0);
+  const [sessionId] = useState(() => crypto.randomUUID());
+  const [questionStartTime, setQuestionStartTime] = useState(Date.now());
+
+  // Fetch question count on mount
+  useEffect(() => {
+    const fetchCount = async () => {
+      try {
+        const res = await questionsAPI.getCount('terminalmaster');
+        setQuestionCount(res.data.count);
+      } catch (error) {
+        console.error('Failed to fetch question count:', error);
+      }
+    };
+    fetchCount();
+  }, []);
 
   // Start game based on mode
-  const startGame = (mode) => {
+  const startGame = async (mode) => {
     setGameMode(mode);
     setCurrentQuestion(0);
     setScore(0);
@@ -52,26 +67,50 @@ export default function TerminalMaster() {
     setShowExplanation(false);
     setShowHint(false);
     setShowMnemonic(false);
+    setQuestionStartTime(Date.now());
 
     // Set data based on mode
     let data = [];
+    
     if (mode === 'scenario') {
-      data = [...TERMINAL_SCENARIOS].sort(() => Math.random() - 0.5).slice(0, 15);
+      // Try to load from API for scenario mode
+      try {
+        const res = await questionsAPI.getQuestions('terminalmaster', 15);
+        if (res.data.questions && res.data.questions.length > 0) {
+          // Transform API questions to match local format
+          data = res.data.questions.map(q => {
+            const questionData = q.data || q;
+            return {
+              ...q, // Preserve _id and other MongoDB fields
+              ...questionData,
+              options: questionData.options || []
+            };
+          });
+        } else {
+          // Fallback to local data
+          data = [...[]].sort(() => Math.random() - 0.5).slice(0, 15);
+        }
+      } catch (error) {
+        console.error('Failed to load questions:', error);
+        // Fallback to local data
+        data = [...[]].sort(() => Math.random() - 0.5).slice(0, 15);
+      }
     } else if (mode === 'builder') {
-      data = [...COMMAND_BUILDER_CHALLENGES].sort(() => Math.random() - 0.5).slice(0, 10);
+      data = [...[]].sort(() => Math.random() - 0.5).slice(0, 10);
     } else if (mode === 'quickfire') {
-      data = [...QUICK_FIRE_COMMANDS].sort(() => Math.random() - 0.5).slice(0, 20);
+      data = [...[]].sort(() => Math.random() - 0.5).slice(0, 20);
     }
+    
     setCurrentData(data);
     
     // Shuffle options for current question
-    if (mode === 'scenario' && data[0]) {
+    if (mode === 'scenario' && data[0] && data[0].options) {
       setShuffledOptions([...data[0].options].sort(() => Math.random() - 0.5));
     }
   };
 
   // Handle answer selection
-  const handleAnswer = (answer) => {
+  const handleAnswer = async (answer) => {
     if (selectedAnswer) return; // Prevent multiple answers
 
     const current = currentData[currentQuestion];
@@ -89,22 +128,55 @@ export default function TerminalMaster() {
       setStreak(0);
       setAnswers(prev => [...prev, { correct: false, question: current.question || current.scenario, answer, correctAnswer: current.answer }]);
     }
+
+    // Submit answer if user is logged in and question is from API (scenario mode)
+    if (user && gameMode === 'scenario' && current._id) {
+      try {
+        await answersAPI.submit('terminalmaster', {
+          questionId: current._id,
+          userAnswer: answer,
+          sessionId,
+          timeSpent: Date.now() - questionStartTime,
+          metadata: { streak, isCorrect, gameMode }
+        });
+      } catch (error) {
+        console.error('Failed to submit answer:', error);
+      }
+    }
+
+    setQuestionStartTime(Date.now());
   };
 
   // Move to next question
   const nextQuestion = () => {
     if (currentQuestion < currentData.length - 1) {
-      setCurrentQuestion(prev => prev + 1);
+      const nextIdx = currentQuestion + 1;
+      setCurrentQuestion(nextIdx);
       setSelectedAnswer(null);
       setShowExplanation(false);
       setShowHint(false);
       setShowMnemonic(false);
+      setQuestionStartTime(Date.now());
       
       // Shuffle options for next question
-      if (gameMode === 'scenario' && currentData[currentQuestion + 1]) {
-        setShuffledOptions([...currentData[currentQuestion + 1].options].sort(() => Math.random() - 0.5));
+      if (gameMode === 'scenario' && currentData[nextIdx] && currentData[nextIdx].options) {
+        setShuffledOptions([...currentData[nextIdx].options].sort(() => Math.random() - 0.5));
       }
     } else {
+      // Submit score when game ends
+      if (user) {
+        const accuracy = currentData.length > 0 
+          ? Math.round((answers.filter(a => a.correct).length / currentData.length) * 100) 
+          : 0;
+        scoresAPI.submit({
+          gameId: 'terminalmaster',
+          score,
+          accuracy,
+          correctAnswers: answers.filter(a => a.correct).length,
+          totalAttempts: currentData.length,
+          metadata: { sessionId, gameMode }
+        }).catch(err => console.error('Failed to submit score:', err));
+      }
       // Game over
       setShowResults(true);
     }
@@ -121,14 +193,18 @@ export default function TerminalMaster() {
   };
 
   if (showResults) {
+    const correctAnswers = answers.filter(a => a.correct).length;
+    const accuracy = currentData.length > 0 
+      ? Math.round((correctAnswers / currentData.length) * 100) 
+      : 0;
     return (
       <Results
         score={score}
-        totalQuestions={currentData.length}
-        correctAnswers={answers.filter(a => a.correct).length}
-        timeTaken={Math.floor((Date.now() - gameStartTime) / 1000)}
+        correct={correctAnswers}
+        total={currentData.length}
+        accuracy={accuracy}
         onPlayAgain={resetGame}
-        answers={answers}
+        onGoHome={resetGame}
       />
     );
   }
@@ -153,6 +229,11 @@ export default function TerminalMaster() {
           <p className="text-gray-400 mt-2">
             Choose your learning mode below
           </p>
+          {questionCount > 0 && (
+            <p className="text-primary text-sm mt-2">
+              {questionCount} questions available
+            </p>
+          )}
         </motion.div>
 
         {/* Mode Selection Cards */}
@@ -457,14 +538,14 @@ export default function TerminalMaster() {
               )}
 
               {/* Mnemonic */}
-              {showMnemonic && !selectedAnswer && COMMAND_MNEMONICS[current.answer] && (
+              {showMnemonic && !selectedAnswer && (
                 <motion.div
                   initial={{ opacity: 0, y: -10 }}
                   animate={{ opacity: 1, y: 0 }}
                   className="mt-4 p-4 bg-primary bg-opacity-10 border border-primary rounded-lg"
                 >
-                  <div className="flex items-start gap-3">
-                    <span className="text-3xl">{COMMAND_MNEMONICS[current.answer].visual}</span>
+                    <div className="flex items-start gap-3">
+                    <span className="text-3xl">{({}[current.answer] || {}).visual}</span>
                     <div>
                       <div className="font-bold text-primary mb-1 flex items-center gap-2">
                         <Brain className="w-4 h-4" />
@@ -474,7 +555,7 @@ export default function TerminalMaster() {
                         {current.mnemonic}
                       </div>
                       <div className="text-gray-400 text-sm">
-                        {COMMAND_MNEMONICS[current.answer].story}
+                        {({}[current.answer] || {}).story}
                       </div>
                     </div>
                   </div>

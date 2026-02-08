@@ -4,8 +4,7 @@ import { motion } from 'framer-motion';
 import { ArrowLeft, Play } from 'lucide-react';
 import toast from 'react-hot-toast';
 import { useAuthStore } from '@store/authStore';
-import { scoresAPI } from '@services/api';
-import { CODE_SNIPPETS } from './data';
+import { scoresAPI, questionsAPI, answersAPI } from '@services/api';
 import Timer from './components/Timer';
 import Results from './components/Results';
 
@@ -19,17 +18,62 @@ export default function CodeType() {
   const [userInput, setUserInput] = useState('');
   const [startTime, setStartTime] = useState(null);
   const [results, setResults] = useState(null);
+  const [questionCount, setQuestionCount] = useState(0);
+  const [questions, setQuestions] = useState([]);
+  const [currentQuestionIndex, setCurrentQuestionIndex] = useState(0);
+  const [sessionId] = useState(() => crypto.randomUUID());
 
-  const startGame = () => {
-    const snippet = CODE_SNIPPETS[Math.floor(Math.random() * CODE_SNIPPETS.length)];
-    setCurrentSnippet(snippet);
+  // Fetch question count on mount
+  useEffect(() => {
+    const fetchCount = async () => {
+      try {
+        const res = await questionsAPI.getCount('codetype');
+        setQuestionCount(res.data.count);
+      } catch (error) {
+        console.error('Failed to fetch question count:', error);
+      }
+    };
+    fetchCount();
+  }, []);
+
+  const startGame = async () => {
+    try {
+      const res = await questionsAPI.getQuestions('codetype', 10);
+  
+      if (res.data?.questions?.length) {
+        setQuestions(res.data.questions);
+  
+        const firstQuestion = res.data.questions[0];
+  
+        setCurrentSnippet({
+          language: firstQuestion.data?.language || firstQuestion.language,
+          code: firstQuestion.data?.code || firstQuestion.code,
+          _id: firstQuestion._id
+        });
+      } else {
+        const snippet =
+          localSnippets[Math.floor(Math.random() * localSnippets.length)];
+  
+        setCurrentSnippet(snippet);
+      }
+    } catch (error) {
+      console.error('Failed to load questions:', error);
+  
+      const snippet =
+        localSnippets[Math.floor(Math.random() * localSnippets.length)];
+  
+      setCurrentSnippet(snippet);
+    }
+  
     setUserInput('');
     setStartTime(Date.now());
+    setCurrentQuestionIndex(0);
     setGameState('playing');
+  
     setTimeout(() => inputRef.current?.focus(), 100);
   };
 
-  const endGame = () => {
+  const endGame = async () => {
     if (!currentSnippet) return;
 
     const timeElapsed = (Date.now() - startTime) / 60000; // minutes
@@ -50,6 +94,21 @@ export default function CodeType() {
     setResults(gameResults);
     setGameState('finished');
 
+    // Submit answer if question is from API and user is logged in
+    if (user && currentSnippet._id) {
+      try {
+        await answersAPI.submit('codetype', {
+          questionId: currentSnippet._id,
+          userAnswer: { text: userInput, isCorrect: userInput === currentSnippet.code },
+          sessionId,
+          timeSpent: Date.now() - startTime,
+          metadata: { cpm, accuracy }
+        });
+      } catch (error) {
+        console.error('Failed to submit answer:', error);
+      }
+    }
+
     // Submit score if logged in
     if (user) {
       scoresAPI.submit({
@@ -58,7 +117,7 @@ export default function CodeType() {
         accuracy,
         correctAnswers: correctChars,
         totalAttempts: totalChars,
-        metadata: { cpm }
+        metadata: { cpm, sessionId }
       }).catch(err => console.error('Failed to submit score:', err));
     }
   };
@@ -108,6 +167,11 @@ export default function CodeType() {
               You'll have 60 seconds to type a code snippet as accurately as possible.
               Your score is based on speed (CPM) and accuracy.
             </p>
+            {questionCount > 0 && (
+              <p className="text-primary text-sm">
+                {questionCount} code snippets available
+              </p>
+            )}
             <button onClick={startGame} className="btn-primary flex items-center gap-2 mx-auto">
               <Play size={20} />
               Start Challenge

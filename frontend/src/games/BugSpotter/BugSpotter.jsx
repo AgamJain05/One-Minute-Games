@@ -3,8 +3,7 @@ import { useNavigate } from 'react-router-dom';
 import { motion } from 'framer-motion';
 import { ArrowLeft, Play } from 'lucide-react';
 import { useAuthStore } from '@store/authStore';
-import { scoresAPI } from '@services/api';
-import { BUGGY_CODE } from './data';
+import { scoresAPI, questionsAPI, answersAPI } from '@services/api';
 import Timer from '../CodeType/components/Timer';
 import Results from './components/Results';
 
@@ -18,27 +17,89 @@ export default function BugSpotter() {
   const [totalAttempts, setTotalAttempts] = useState(0);
   const [correctAttempts, setCorrectAttempts] = useState(0);
   const [foundBugs, setFoundBugs] = useState(new Set());
+  const [questionCount, setQuestionCount] = useState(0);
+  const [questions, setQuestions] = useState([]);
+  const [currentQuestionIndex, setCurrentQuestionIndex] = useState(0);
+  const [sessionId] = useState(() => crypto.randomUUID());
+  const [questionStartTime, setQuestionStartTime] = useState(Date.now());
 
-  const startGame = () => {
+  // Fetch question count on mount
+  useEffect(() => {
+    const fetchCount = async () => {
+      try {
+        const res = await questionsAPI.getCount('bugspotter');
+        setQuestionCount(res.data.count);
+      } catch (error) {
+        console.error('Failed to fetch question count:', error);
+      }
+    };
+    fetchCount();
+  }, []);
+
+  const startGame = async () => {
+    let loadedQuestions = [];
+    
+    try {
+      const res = await questionsAPI.getQuestions('bugspotter', 20);
+      if (res.data.questions && res.data.questions.length > 0) {
+        loadedQuestions = res.data.questions;
+      } else {
+        loadedQuestions = [].map(q => ({ data: q }));
+      }
+    } catch (error) {
+      console.error('Failed to load questions:', error);
+      loadedQuestions = [].map(q => ({ data: q }));
+    }
+
+    setQuestions(loadedQuestions);
     setScore(0);
     setTotalAttempts(0);
     setCorrectAttempts(0);
+    setCurrentQuestionIndex(0);
     setGameState('playing');
-    generateNewProblem();
+    
+    // Load first question if available
+    if (loadedQuestions.length > 0) {
+      const firstQuestion = loadedQuestions[0];
+      const questionData = firstQuestion.data || firstQuestion;
+      setCurrentCode({ ...questionData, _id: firstQuestion._id });
+      setFoundBugs(new Set());
+      setCurrentQuestionIndex(1); // Start at 1 since we loaded index 0
+      setQuestionStartTime(Date.now());
+    }
   };
 
   const generateNewProblem = () => {
-    const problem = BUGGY_CODE[Math.floor(Math.random() * BUGGY_CODE.length)];
-    setCurrentCode(problem);
+    if (questions.length === 0) {
+      console.error('No questions available');
+      return;
+    }
+    
+    if (currentQuestionIndex >= questions.length) {
+      setCurrentQuestionIndex(0);
+    }
+    
+    const question = questions[currentQuestionIndex];
+    if (!question) {
+      console.error('Question not found at index:', currentQuestionIndex);
+      return;
+    }
+    
+    const questionData = question.data || question;
+    setCurrentCode({ ...questionData, _id: question._id });
     setFoundBugs(new Set());
+    setCurrentQuestionIndex(prev => prev + 1);
+    setQuestionStartTime(Date.now());
   };
 
-  const handleLineClick = (lineIndex) => {
+  const handleLineClick = async (lineIndex) => {
     if (gameState !== 'playing') return;
 
     setTotalAttempts(prev => prev + 1);
 
-    if (currentCode.bugs.includes(lineIndex)) {
+    const isCorrect = currentCode.bugs.includes(lineIndex);
+
+    if (isCorrect) {
       // Correct! Found a bug
       const newFoundBugs = new Set(foundBugs);
       newFoundBugs.add(lineIndex);
@@ -46,9 +107,39 @@ export default function BugSpotter() {
       setCorrectAttempts(prev => prev + 1);
       setScore(prev => prev + 10);
 
+      // Submit answer if user is logged in and question is from API
+      if (user && currentCode._id) {
+        try {
+          await answersAPI.submit('bugspotter', {
+            questionId: currentCode._id,
+            userAnswer: lineIndex.toString(),
+            sessionId,
+            timeSpent: Date.now() - questionStartTime,
+            metadata: { isCorrect: true, bugLine: lineIndex }
+          });
+        } catch (error) {
+          console.error('Failed to submit answer:', error);
+        }
+      }
+
       // If all bugs found, generate new problem
       if (newFoundBugs.size === currentCode.bugs.length) {
         setTimeout(generateNewProblem, 500);
+      }
+    } else {
+      // Submit incorrect answer if user is logged in and question is from API
+      if (user && currentCode._id) {
+        try {
+          await answersAPI.submit('bugspotter', {
+            questionId: currentCode._id,
+            userAnswer: lineIndex.toString(),
+            sessionId,
+            timeSpent: Date.now() - questionStartTime,
+            metadata: { isCorrect: false, bugLine: lineIndex }
+          });
+        } catch (error) {
+          console.error('Failed to submit answer:', error);
+        }
       }
     }
   };
@@ -67,6 +158,7 @@ export default function BugSpotter() {
         accuracy,
         correctAnswers: correctAttempts,
         totalAttempts,
+        metadata: { sessionId }
       }).catch(err => console.error('Failed to submit score:', err));
     }
   };
@@ -105,6 +197,11 @@ export default function BugSpotter() {
             <p className="text-gray-400 max-w-md mx-auto">
               Find as many bugs as you can in 60 seconds. Click on the lines with bugs!
             </p>
+            {questionCount > 0 && (
+              <p className="text-primary text-sm">
+                {questionCount} questions available
+              </p>
+            )}
             <button onClick={startGame} className="btn-primary flex items-center gap-2 mx-auto">
               <Play size={20} />
               Start Challenge

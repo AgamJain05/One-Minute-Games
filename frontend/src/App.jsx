@@ -6,6 +6,7 @@ import Home from '@/pages/Home';
 import Login from '@/pages/Login';
 import Register from '@/pages/Register';
 import Profile from '@/pages/Profile';
+import Settings from '@/pages/Settings';
 // import Leaderboard from '@/pages/Leaderboard';
 // PRICING IMPORTS DISABLED - Uncomment when re-enabling payment features
 // import Pricing from '@/pages/Pricing';
@@ -28,6 +29,7 @@ function App() {
       <Route element={<Layout />}>
         <Route path="/games" element={user ? <Home /> : <Navigate to="/login" />} />
         <Route path="/profile" element={user ? <Profile /> : <Navigate to="/login" />} />
+        <Route path="/settings" element={user ? <Settings /> : <Navigate to="/login" />} />
         {/* <Route path="/leaderboard" element={<Leaderboard />} /> */}
         
         {/* PRICING & PAYMENT ROUTES DISABLED - Uncomment below to re-enable */}

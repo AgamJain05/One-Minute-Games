@@ -1,10 +1,9 @@
-import { useState } from 'react';
+import { useState, useEffect } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { motion } from 'framer-motion';
 import { ArrowLeft, Play, Palette } from 'lucide-react';
 import { useAuthStore } from '@store/authStore';
-import { scoresAPI } from '@services/api';
-import { COLOR_CODES } from './data';
+import { scoresAPI, questionsAPI, answersAPI } from '@services/api';
 import Timer from '../CodeType/components/Timer';
 import Results from '../OutputPredictor/components/Results';
 
@@ -18,22 +17,81 @@ export default function ColorMatcher() {
   const [totalAttempts, setTotalAttempts] = useState(0);
   const [correctAttempts, setCorrectAttempts] = useState(0);
   const [combo, setCombo] = useState(0);
+  const [questionCount, setQuestionCount] = useState(0);
+  const [questions, setQuestions] = useState([]);
+  const [currentQuestionIndex, setCurrentQuestionIndex] = useState(0);
+  const [sessionId] = useState(() => crypto.randomUUID());
+  const [questionStartTime, setQuestionStartTime] = useState(Date.now());
 
-  const startGame = () => {
+  // Fetch question count on mount
+  useEffect(() => {
+    const fetchCount = async () => {
+      try {
+        const res = await questionsAPI.getCount('colormatcher');
+        setQuestionCount(res.data.count);
+      } catch (error) {
+        console.error('Failed to fetch question count:', error);
+      }
+    };
+    fetchCount();
+  }, []);
+
+  const startGame = async () => {
+    let loadedQuestions = [];
+    
+    try {
+      const res = await questionsAPI.getQuestions('colormatcher', 20);
+      if (res.data.questions && res.data.questions.length > 0) {
+        loadedQuestions = res.data.questions;
+      } else {
+        loadedQuestions = [].map(q => ({ data: q }));
+      }
+    } catch (error) {
+      console.error('Failed to load questions:', error);
+      loadedQuestions = [].map(q => ({ data: q }));
+    }
+
+    setQuestions(loadedQuestions);
     setScore(0);
     setTotalAttempts(0);
     setCorrectAttempts(0);
     setCombo(0);
+    setCurrentQuestionIndex(0);
     setGameState('playing');
-    loadNewColor();
+    
+    // Load first question if available
+    if (loadedQuestions.length > 0) {
+      const firstQuestion = loadedQuestions[0];
+      const questionData = firstQuestion.data || firstQuestion;
+      setCurrentColor({ ...questionData, _id: firstQuestion._id });
+      setCurrentQuestionIndex(1); // Start at 1 since we loaded index 0
+      setQuestionStartTime(Date.now());
+    }
   };
 
   const loadNewColor = () => {
-    const color = COLOR_CODES[Math.floor(Math.random() * COLOR_CODES.length)];
-    setCurrentColor(color);
+    if (questions.length === 0) {
+      console.error('No questions available');
+      return;
+    }
+    
+    if (currentQuestionIndex >= questions.length) {
+      setCurrentQuestionIndex(0);
+    }
+    
+    const question = questions[currentQuestionIndex];
+    if (!question) {
+      console.error('Question not found at index:', currentQuestionIndex);
+      return;
+    }
+    
+    const questionData = question.data || question;
+    setCurrentColor({ ...questionData, _id: question._id });
+    setCurrentQuestionIndex(prev => prev + 1);
+    setQuestionStartTime(Date.now());
   };
 
-  const handleAnswer = (selected) => {
+  const handleAnswer = async (selected) => {
     setTotalAttempts(prev => prev + 1);
     
     const isCorrect = selected === currentColor.code;
@@ -46,6 +104,21 @@ export default function ColorMatcher() {
       setCombo(newCombo);
     } else {
       setCombo(0);
+    }
+
+    // Submit answer if user is logged in and question has ID
+    if (user && currentColor._id) {
+      try {
+        await answersAPI.submit('colormatcher', {
+          questionId: currentColor._id,
+          userAnswer: selected,
+          sessionId,
+          timeSpent: Date.now() - questionStartTime,
+          metadata: { isCorrect, combo, hex: currentColor.hex }
+        });
+      } catch (error) {
+        console.error('Failed to submit answer:', error);
+      }
     }
     
     setTimeout(loadNewColor, 500);
@@ -65,6 +138,7 @@ export default function ColorMatcher() {
         accuracy,
         correctAnswers: correctAttempts,
         totalAttempts,
+        metadata: { sessionId }
       }).catch(err => console.error('Failed to submit score:', err));
     }
   };
@@ -103,6 +177,11 @@ export default function ColorMatcher() {
             <p className="text-gray-400 max-w-md mx-auto">
               Test your color code knowledge! Match colors to their codes.
             </p>
+            {questionCount > 0 && (
+              <p className="text-primary text-sm">
+                {questionCount} questions available
+              </p>
+            )}
             <button onClick={startGame} className="btn-primary flex items-center gap-2 mx-auto">
               <Play size={20} />
               Start Challenge

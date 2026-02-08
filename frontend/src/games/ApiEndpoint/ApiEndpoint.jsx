@@ -12,10 +12,13 @@ import {
   AlertTriangle,
   BookOpen
 } from 'lucide-react';
+import { useAuthStore } from '@store/authStore';
+import { questionsAPI, answersAPI, scoresAPI } from '@services/api';
 import Results from './components/Results';
-import { API_SCENARIOS, API_PRINCIPLES, HTTP_METHODS_GUIDE } from './data';
 
 export default function ApiEndpoint() {
+  const { user } = useAuthStore();
+  
   const [gameStarted, setGameStarted] = useState(false);
   const [currentQuestion, setCurrentQuestion] = useState(0);
   const [score, setScore] = useState(0);
@@ -31,11 +34,53 @@ export default function ApiEndpoint() {
   const [allOptions, setAllOptions] = useState([]);
   const [showTip, setShowTip] = useState(false);
   const [showMethodGuide, setShowMethodGuide] = useState(false);
+  
+  // API integration state
+  const [questionCount, setQuestionCount] = useState(0);
+  const [sessionId] = useState(() => crypto.randomUUID());
+  const [questionStartTime, setQuestionStartTime] = useState(Date.now());
+
+  // Fetch question count on mount
+  useEffect(() => {
+    const fetchCount = async () => {
+      try {
+        const res = await questionsAPI.getCount('apiendpoint');
+        setQuestionCount(res.data.count);
+      } catch (error) {
+        console.error('Failed to fetch question count:', error);
+      }
+    };
+    fetchCount();
+  }, []);
 
   // Start game
-  const startGame = () => {
-    const shuffled = [...API_SCENARIOS].sort(() => Math.random() - 0.5).slice(0, 15);
-    setQuestions(shuffled);
+  const startGame = async () => {
+    let loadedQuestions = [];
+    
+    try {
+      const res = await questionsAPI.getQuestions('apiendpoint', 15);
+      if (res.data.questions && res.data.questions.length > 0) {
+        // Transform API questions to match local format
+        loadedQuestions = res.data.questions.map(q => {
+          const data = q.data || q;
+          return {
+            ...q, // Preserve _id and other MongoDB fields
+            ...data,
+            answer: data.answer || { fullEndpoint: data.correctAnswer },
+            wrongAnswers: data.wrongAnswers || []
+          };
+        });
+      } else {
+        // Fallback to local data
+        loadedQuestions = [...[]].sort(() => Math.random() - 0.5).slice(0, 15);
+      }
+    } catch (error) {
+      console.error('Failed to load questions:', error);
+      // Fallback to local data
+      loadedQuestions = [...[]].sort(() => Math.random() - 0.5).slice(0, 15);
+    }
+
+    setQuestions(loadedQuestions);
     setGameStarted(true);
     setCurrentQuestion(0);
     setScore(0);
@@ -46,19 +91,20 @@ export default function ApiEndpoint() {
     setSelectedAnswer(null);
     setShowExplanation(false);
     setShowTip(false);
+    setQuestionStartTime(Date.now());
     
     // Shuffle options for first question
-    if (shuffled[0]) {
+    if (loadedQuestions[0]) {
       const firstOptions = [
-        shuffled[0].answer,
-        ...shuffled[0].wrongAnswers
+        loadedQuestions[0].answer,
+        ...loadedQuestions[0].wrongAnswers
       ].sort(() => Math.random() - 0.5);
       setAllOptions(firstOptions);
     }
   };
 
   // Handle answer selection
-  const handleAnswer = (answer) => {
+  const handleAnswer = async (answer) => {
     if (selectedAnswer) return;
 
     const current = questions[currentQuestion];
@@ -85,6 +131,29 @@ export default function ApiEndpoint() {
         correctAnswer: current.answer.fullEndpoint 
       }]);
     }
+
+    // Submit answer to API if user is logged in and question has ID
+    if (user && current._id) {
+      try {
+        await answersAPI.submit('apiendpoint', {
+          questionId: current._id,
+          userAnswer: answer.fullEndpoint,
+          sessionId,
+          timeSpent: Date.now() - questionStartTime,
+          metadata: { 
+            isCorrect,
+            streak,
+            selectedMethod: answer.method || '',
+            selectedPath: answer.path || ''
+          }
+        });
+      } catch (error) {
+        console.error('Failed to submit answer:', error);
+      }
+    }
+    
+    // Reset timer for next question
+    setQuestionStartTime(Date.now());
   };
 
   // Next question
@@ -95,6 +164,7 @@ export default function ApiEndpoint() {
       setSelectedAnswer(null);
       setShowExplanation(false);
       setShowTip(false);
+      setQuestionStartTime(Date.now());
       
       // Shuffle options for next question
       const nextOptions = [
@@ -103,6 +173,20 @@ export default function ApiEndpoint() {
       ].sort(() => Math.random() - 0.5);
       setAllOptions(nextOptions);
     } else {
+      // Submit score when game ends
+      if (user) {
+        const accuracy = questions.length > 0 
+          ? Math.round((answers.filter(a => a.correct).length / questions.length) * 100) 
+          : 0;
+        scoresAPI.submit({
+          gameId: 'apiendpoint',
+          score,
+          accuracy,
+          correctAnswers: answers.filter(a => a.correct).length,
+          totalAttempts: questions.length,
+          metadata: { sessionId }
+        }).catch(err => console.error('Failed to submit score:', err));
+      }
       setShowResults(true);
     }
   };
@@ -230,6 +314,11 @@ export default function ApiEndpoint() {
             <ArrowRight className="w-6 h-6" />
           </button>
           <p className="text-gray-400 mt-4">15 real-world scenarios • ~5 minutes</p>
+          {questionCount > 0 && (
+            <p className="text-primary text-sm mt-2">
+              {questionCount} questions available
+            </p>
+          )}
         </motion.div>
 
         {/* Sample Scenario Preview */}

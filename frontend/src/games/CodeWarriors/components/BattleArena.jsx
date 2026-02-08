@@ -1,8 +1,9 @@
 import { useState, useEffect } from 'react';
 import { motion } from 'framer-motion';
 import { Timer as TimerIcon, Zap, Shield, Sword } from 'lucide-react';
+import { answersAPI } from '@services/api';
 
-export default function BattleArena({ battleState, setBattleState, questions, onEnd }) {
+export default function BattleArena({ battleState, setBattleState, questions, onEnd, user, sessionId }) {
   const [selectedAttack, setSelectedAttack] = useState(null);
   const [showQuiz, setShowQuiz] = useState(false);
   const [currentQuestion, setCurrentQuestion] = useState(null);
@@ -39,8 +40,29 @@ export default function BattleArena({ battleState, setBattleState, questions, on
     }
   };
 
-  const answerQuiz = (isCorrect) => {
+  const answerQuiz = async (selectedOption) => {
     const timeTaken = elapsedTime;
+    const isCorrect = selectedOption === currentQuestion.answer;
+    
+    // Submit answer if user is logged in and question is from API
+    if (user && currentQuestion && currentQuestion._id) {
+      try {
+        await answersAPI.submit('codewarriors', {
+          questionId: currentQuestion._id,
+          userAnswer: selectedOption,
+          sessionId,
+          timeSpent: timeTaken * 1000, // Convert to milliseconds
+          metadata: { 
+            isCorrect, 
+            difficulty: currentQuestion.difficulty,
+            characterType: battleState[currentPlayer].id
+          }
+        });
+      } catch (error) {
+        console.error('Failed to submit answer:', error);
+      }
+    }
+    
     setShowQuiz(false);
     setQuizStartTime(null);
     executeAttack(selectedAttack, isCorrect, timeTaken);
@@ -306,7 +328,7 @@ export default function BattleArena({ battleState, setBattleState, questions, on
             {currentQuestion.options.map((option, idx) => (
               <button
                 key={idx}
-                onClick={() => answerQuiz(option === currentQuestion.answer)}
+                onClick={() => answerQuiz(option)}
                 className="bg-dark-bg hover:bg-gray-800 border-2 border-gray-700 hover:border-primary rounded-lg p-3 text-left transition-all"
               >
                 {option}

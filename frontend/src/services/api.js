@@ -75,6 +75,18 @@ export const gamesAPI = {
   getById: (gameId) => api.get(`/games/${gameId}`),
 };
 
+// Questions API
+export const questionsAPI = {
+  getQuestions: (gameId, limit) => api.get(`/games/${gameId}/questions`, { params: { limit, random: true } }),
+  getCount: (gameId) => api.get(`/games/${gameId}/questions/count`),
+};
+
+// Answers API
+export const answersAPI = {
+  submit: (gameId, data) => api.post(`/games/${gameId}/answers`, data),
+  getSession: (gameId, sessionId) => api.get(`/games/${gameId}/sessions/${sessionId}/answers`),
+};
+
 // Analytics API
 export const analyticsAPI = {
   track: (data) => api.post('/analytics/track', data).catch(() => {}),

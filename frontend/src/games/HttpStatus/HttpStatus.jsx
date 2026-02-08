@@ -1,10 +1,9 @@
-import { useState } from 'react';
+import { useState, useEffect } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { motion } from 'framer-motion';
 import { ArrowLeft, Play, Globe } from 'lucide-react';
 import { useAuthStore } from '@store/authStore';
-import { scoresAPI } from '@services/api';
-import { HTTP_STATUSES } from './data';
+import { scoresAPI, questionsAPI, answersAPI } from '@services/api';
 import Timer from '../CodeType/components/Timer';
 import Results from '../OutputPredictor/components/Results';
 
@@ -20,30 +19,84 @@ export default function HttpStatus() {
   const [usedQuestions, setUsedQuestions] = useState([]);
   const [streak, setStreak] = useState(0);
   const [selectedOption, setSelectedOption] = useState(null);
+  const [questionCount, setQuestionCount] = useState(0);
+  const [questions, setQuestions] = useState([]);
+  const [currentQuestionIndex, setCurrentQuestionIndex] = useState(0);
+  const [sessionId] = useState(() => crypto.randomUUID());
+  const [questionStartTime, setQuestionStartTime] = useState(Date.now());
 
-  const startGame = () => {
+  // Fetch question count on mount
+  useEffect(() => {
+    const fetchCount = async () => {
+      try {
+        const res = await questionsAPI.getCount('httpstatus');
+        setQuestionCount(res.data.count);
+      } catch (error) {
+        console.error('Failed to fetch question count:', error);
+      }
+    };
+    fetchCount();
+  }, []);
+
+  const startGame = async () => {
+    let loadedQuestions = [];
+    
+    try {
+      const res = await questionsAPI.getQuestions('httpstatus', 20);
+      if (res.data.questions && res.data.questions.length > 0) {
+        loadedQuestions = res.data.questions;
+      } else {
+        loadedQuestions = [].map(q => ({ data: q }));
+      }
+    } catch (error) {
+      console.error('Failed to load questions:', error);
+      loadedQuestions = [].map(q => ({ data: q }));
+    }
+
+    setQuestions(loadedQuestions);
     setScore(0);
     setTotalAttempts(0);
     setCorrectAttempts(0);
     setUsedQuestions([]);
     setStreak(0);
+    setCurrentQuestionIndex(0);
     setGameState('playing');
-    loadNewQuestion();
-  };
-
-  const loadNewQuestion = () => {
-    const available = HTTP_STATUSES.filter(q => !usedQuestions.find(used => used.code === q.code));
-    const pool = available.length > 0 ? available : HTTP_STATUSES;
-    const question = pool[Math.floor(Math.random() * pool.length)];
     
-    setCurrentQuestion(question);
-    setSelectedOption(null);
-    if (available.length > 0) {
-      setUsedQuestions(prev => [...prev, question]);
+    // Load first question if available
+    if (loadedQuestions.length > 0) {
+      const firstQuestion = loadedQuestions[0];
+      const questionData = firstQuestion.data || firstQuestion;
+      setCurrentQuestion({ ...questionData, _id: firstQuestion._id });
+      setSelectedOption(null);
+      setCurrentQuestionIndex(1); // Start at 1 since we loaded index 0
+      setQuestionStartTime(Date.now());
     }
   };
 
-  const handleAnswer = (selectedAnswer) => {
+  const loadNewQuestion = () => {
+    if (questions.length === 0) {
+      console.error('No questions available');
+      return;
+    }
+    
+    if (currentQuestionIndex >= questions.length) {
+      setCurrentQuestionIndex(0);
+    }
+    
+    const question = questions[currentQuestionIndex];
+    if (!question) {
+      console.error('Question not found at index:', currentQuestionIndex);
+      return;
+    }
+    
+    const questionData = question.data || question;
+    setCurrentQuestion({ ...questionData, _id: question._id });
+    setSelectedOption(null);
+    setCurrentQuestionIndex(prev => prev + 1);
+    setQuestionStartTime(Date.now());
+  };
+
+  const handleAnswer = async (selectedAnswer) => {
     if (!currentQuestion || selectedOption !== null) return;
     setTotalAttempts(prev => prev + 1);
     setSelectedOption(selectedAnswer);
@@ -58,6 +111,21 @@ export default function HttpStatus() {
       setStreak(prev => prev + 1);
     } else {
       setStreak(0);
+    }
+
+    // Submit answer if user is logged in and question is from API
+    if (user && currentQuestion._id) {
+      try {
+        await answersAPI.submit('httpstatus', {
+          questionId: currentQuestion._id,
+          userAnswer: selectedAnswer,
+          sessionId,
+          timeSpent: Date.now() - questionStartTime,
+          metadata: { streak, isCorrect }
+        });
+      } catch (error) {
+        console.error('Failed to submit answer:', error);
+      }
     }
     
     setTimeout(loadNewQuestion, 700);
@@ -77,6 +145,7 @@ export default function HttpStatus() {
         accuracy,
         correctAnswers: correctAttempts,
         totalAttempts,
+        metadata: { sessionId }
       }).catch(err => console.error('Failed to submit score:', err));
     }
   };
@@ -124,6 +193,11 @@ export default function HttpStatus() {
             <p className="text-gray-400 max-w-md mx-auto">
               Test your knowledge of HTTP status codes! Match codes to their meanings.
             </p>
+            {questionCount > 0 && (
+              <p className="text-primary text-sm">
+                {questionCount} questions available
+              </p>
+            )}
             <button onClick={startGame} className="btn-primary flex items-center gap-2 mx-auto">
               <Play size={20} />
               Start Challenge

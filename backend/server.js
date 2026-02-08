@@ -51,11 +51,20 @@ mongoose.connect(process.env.MONGODB_URI)
     // Initialize other collections proactively
     const Score = require('./models/Score');
     const AnalyticsEvent = require('./models/AnalyticsEvent');
+    const Answer = require('./models/Answer');
+    
+    // Import question models registry
+    const { QuestionModels } = await import('./models/questions/index.js');
+    
     await Promise.all([
       Score.init(),
       AnalyticsEvent.init(),
+      Answer.init(),
+      // Initialize all question models
+      ...Object.values(QuestionModels).map(Model => Model.init())
     ]);
     console.log('✅ User indexes synchronized');
+    console.log('✅ All question models initialized');
   } catch (e) {
     console.error('⚠️ Failed to sync indexes:', e.message);
   }
@@ -68,10 +77,14 @@ import userRoutes from './routes/users.js';
 import scoreRoutes from './routes/scores.js';
 import gameRoutes from './routes/games.js';
 import analyticsRoutes from './routes/analytics.js';
+import questionRoutes from './routes/questions.js';
+import answerRoutes from './routes/answers.js';
 
 app.use('/api/auth', authRoutes);
 app.use('/api/users', userRoutes);
 app.use('/api/scores', scoreRoutes);
+app.use('/api/games', questionRoutes);
+app.use('/api/games', answerRoutes);
 app.use('/api/games', gameRoutes);
 app.use('/api/analytics', analyticsRoutes);
 

@@ -1,12 +1,11 @@
-import { useState } from 'react';
+import { useState, useEffect } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { motion } from 'framer-motion';
 import { ArrowLeft, Play } from 'lucide-react';
 import { DndContext, closestCenter, PointerSensor, useSensor, useSensors } from '@dnd-kit/core';
 import { SortableContext, horizontalListSortingStrategy, arrayMove } from '@dnd-kit/sortable';
 import { useAuthStore } from '@store/authStore';
-import { scoresAPI } from '@services/api';
-import { FLEXBOX_CHALLENGES } from './data';
+import { scoresAPI, questionsAPI, answersAPI } from '@services/api';
 import Timer from '../CodeType/components/Timer';
 import SortableItem from './components/SortableItem';
 import Results from '../SqlBuilder/components/Results';
@@ -21,6 +20,11 @@ export default function FlexboxFrenzy() {
   const [score, setScore] = useState(0);
   const [correctCount, setCorrectCount] = useState(0);
   const [totalAttempts, setTotalAttempts] = useState(0);
+  const [questionCount, setQuestionCount] = useState(0);
+  const [questions, setQuestions] = useState([]);
+  const [currentQuestionIndex, setCurrentQuestionIndex] = useState(0);
+  const [sessionId] = useState(() => crypto.randomUUID());
+  const [questionStartTime, setQuestionStartTime] = useState(Date.now());
 
   const sensors = useSensors(
     useSensor(PointerSensor, {
@@ -30,21 +34,79 @@ export default function FlexboxFrenzy() {
     })
   );
 
-  const startGame = () => {
+  // Fetch question count on mount
+  useEffect(() => {
+    const fetchCount = async () => {
+      try {
+        const res = await questionsAPI.getCount('flexbox');
+        setQuestionCount(res.data.count);
+      } catch (error) {
+        console.error('Failed to fetch question count:', error);
+      }
+    };
+    fetchCount();
+  }, []);
+
+  const startGame = async () => {
+    let loadedQuestions = [];
+    
+    try {
+      const res = await questionsAPI.getQuestions('flexbox', 20);
+      if (res.data.questions && res.data.questions.length > 0) {
+        loadedQuestions = res.data.questions;
+      } else {
+        loadedQuestions = [].map(q => ({ data: q }));
+      }
+    } catch (error) {
+      console.error('Failed to load questions:', error);
+      loadedQuestions = [].map(q => ({ data: q }));
+    }
+
+    setQuestions(loadedQuestions);
     setScore(0);
     setCorrectCount(0);
     setTotalAttempts(0);
+    setCurrentQuestionIndex(0);
     setGameState('playing');
-    loadNewChallenge();
+    
+    // Load first question if available
+    if (loadedQuestions.length > 0) {
+      const firstQuestion = loadedQuestions[0];
+      const questionData = firstQuestion.data || firstQuestion;
+      setCurrentChallenge({ ...questionData, _id: firstQuestion._id });
+      
+      // Shuffle the items
+      const shuffled = [...questionData.items].sort(() => Math.random() - 0.5);
+      setUserOrder(shuffled);
+      setCurrentQuestionIndex(1); // Start at 1 since we loaded index 0
+      setQuestionStartTime(Date.now());
+    }
   };
 
   const loadNewChallenge = () => {
-    const challenge = FLEXBOX_CHALLENGES[Math.floor(Math.random() * FLEXBOX_CHALLENGES.length)];
-    setCurrentChallenge(challenge);
+    if (questions.length === 0) {
+      console.error('No questions available');
+      return;
+    }
+    
+    if (currentQuestionIndex >= questions.length) {
+      setCurrentQuestionIndex(0);
+    }
+    
+    const question = questions[currentQuestionIndex];
+    if (!question) {
+      console.error('Question not found at index:', currentQuestionIndex);
+      return;
+    }
+    
+    const questionData = question.data || question;
+    setCurrentChallenge({ ...questionData, _id: question._id });
     
     // Shuffle the items
-    const shuffled = [...challenge.items].sort(() => Math.random() - 0.5);
+    const shuffled = [...questionData.items].sort(() => Math.random() - 0.5);
     setUserOrder(shuffled);
+    setCurrentQuestionIndex(prev => prev + 1);
+    setQuestionStartTime(Date.now());
   };
 
   const handleDragEnd = (event) => {
@@ -59,7 +121,7 @@ export default function FlexboxFrenzy() {
     }
   };
 
-  const checkAnswer = () => {
+  const checkAnswer = async () => {
     setTotalAttempts(prev => prev + 1);
     
     const isCorrect = JSON.stringify(userOrder) === JSON.stringify(currentChallenge.items);
@@ -67,6 +129,24 @@ export default function FlexboxFrenzy() {
     if (isCorrect) {
       setScore(prev => prev + 15);
       setCorrectCount(prev => prev + 1);
+    }
+
+    // Submit answer if user is logged in and question has ID
+    if (user && currentChallenge._id) {
+      try {
+        await answersAPI.submit('flexbox', {
+          questionId: currentChallenge._id,
+          userAnswer: JSON.stringify(userOrder),
+          sessionId,
+          timeSpent: Date.now() - questionStartTime,
+          metadata: { isCorrect, expectedOrder: currentChallenge.items }
+        });
+      } catch (error) {
+        console.error('Failed to submit answer:', error);
+      }
+    }
+    
+    if (isCorrect) {
       setTimeout(loadNewChallenge, 1000);
     }
   };
@@ -85,6 +165,7 @@ export default function FlexboxFrenzy() {
         accuracy,
         correctAnswers: correctCount,
         totalAttempts,
+        metadata: { sessionId }
       }).catch(err => console.error('Failed to submit score:', err));
     }
   };
@@ -124,6 +205,11 @@ export default function FlexboxFrenzy() {
               Arrange items in the correct order using Flexbox properties.
               Drag and drop to reorder!
             </p>
+            {questionCount > 0 && (
+              <p className="text-primary text-sm">
+                {questionCount} questions available
+              </p>
+            )}
             <button onClick={startGame} className="btn-primary flex items-center gap-2 mx-auto">
               <Play size={20} />
               Start Challenge

@@ -1,10 +1,9 @@
-import { useState } from 'react';
+import { useState, useEffect } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { motion } from 'framer-motion';
 import { ArrowLeft, Play, Search } from 'lucide-react';
 import { useAuthStore } from '@store/authStore';
-import { scoresAPI } from '@services/api';
-import { REGEX_QUESTIONS } from './data';
+import { scoresAPI, questionsAPI, answersAPI } from '@services/api';
 import Timer from '../CodeType/components/Timer';
 import Results from '../OutputPredictor/components/Results';
 
@@ -18,28 +17,81 @@ export default function RegexMatcher() {
   const [totalAttempts, setTotalAttempts] = useState(0);
   const [correctAttempts, setCorrectAttempts] = useState(0);
   const [usedQuestions, setUsedQuestions] = useState([]);
+  const [questionCount, setQuestionCount] = useState(0);
+  const [questions, setQuestions] = useState([]);
+  const [currentQuestionIndex, setCurrentQuestionIndex] = useState(0);
+  const [sessionId] = useState(() => crypto.randomUUID());
+  const [questionStartTime, setQuestionStartTime] = useState(Date.now());
 
-  const startGame = () => {
+  // Fetch question count on mount
+  useEffect(() => {
+    const fetchCount = async () => {
+      try {
+        const res = await questionsAPI.getCount('regexmatcher');
+        setQuestionCount(res.data.count);
+      } catch (error) {
+        console.error('Failed to fetch question count:', error);
+      }
+    };
+    fetchCount();
+  }, []);
+
+  const startGame = async () => {
+    let loadedQuestions = [];
+    
+    try {
+      const res = await questionsAPI.getQuestions('regexmatcher', 20);
+      if (res.data.questions && res.data.questions.length > 0) {
+        loadedQuestions = res.data.questions;
+      } else {
+        loadedQuestions = [].map(q => ({ data: q }));
+      }
+    } catch (error) {
+      console.error('Failed to load questions:', error);
+      loadedQuestions = [].map(q => ({ data: q }));
+    }
+
+    setQuestions(loadedQuestions);
     setScore(0);
     setTotalAttempts(0);
     setCorrectAttempts(0);
     setUsedQuestions([]);
+    setCurrentQuestionIndex(0);
     setGameState('playing');
-    loadNewQuestion();
-  };
-
-  const loadNewQuestion = () => {
-    const available = REGEX_QUESTIONS.filter(q => !usedQuestions.find(used => used.string === q.string));
-    const pool = available.length > 0 ? available : REGEX_QUESTIONS;
-    const question = pool[Math.floor(Math.random() * pool.length)];
     
-    setCurrentQuestion(question);
-    if (available.length > 0) {
-      setUsedQuestions(prev => [...prev, question]);
+    // Load first question if available
+    if (loadedQuestions.length > 0) {
+      const firstQuestion = loadedQuestions[0];
+      const questionData = firstQuestion.data || firstQuestion;
+      setCurrentQuestion({ ...questionData, _id: firstQuestion._id });
+      setCurrentQuestionIndex(1); // Start at 1 since we loaded index 0
+      setQuestionStartTime(Date.now());
     }
   };
 
-  const handleAnswer = (userAnswer) => {
+  const loadNewQuestion = () => {
+    if (questions.length === 0) {
+      console.error('No questions available');
+      return;
+    }
+    
+    if (currentQuestionIndex >= questions.length) {
+      setCurrentQuestionIndex(0);
+    }
+    
+    const question = questions[currentQuestionIndex];
+    if (!question) {
+      console.error('Question not found at index:', currentQuestionIndex);
+      return;
+    }
+    
+    const questionData = question.data || question;
+    setCurrentQuestion({ ...questionData, _id: question._id });
+    setCurrentQuestionIndex(prev => prev + 1);
+    setQuestionStartTime(Date.now());
+  };
+
+  const handleAnswer = async (userAnswer) => {
     setTotalAttempts(prev => prev + 1);
     
     const isCorrect = userAnswer === currentQuestion.matches;
@@ -47,6 +99,21 @@ export default function RegexMatcher() {
     if (isCorrect) {
       setScore(prev => prev + 10);
       setCorrectAttempts(prev => prev + 1);
+    }
+
+    // Submit answer if user is logged in and question has ID
+    if (user && currentQuestion._id) {
+      try {
+        await answersAPI.submit('regexmatcher', {
+          questionId: currentQuestion._id,
+          userAnswer: userAnswer,
+          sessionId,
+          timeSpent: Date.now() - questionStartTime,
+          metadata: { isCorrect, pattern: currentQuestion.pattern?.toString(), string: currentQuestion.string }
+        });
+      } catch (error) {
+        console.error('Failed to submit answer:', error);
+      }
     }
     
     setTimeout(loadNewQuestion, 500);
@@ -66,6 +133,7 @@ export default function RegexMatcher() {
         accuracy,
         correctAnswers: correctAttempts,
         totalAttempts,
+        metadata: { sessionId }
       }).catch(err => console.error('Failed to submit score:', err));
     }
   };
@@ -104,6 +172,11 @@ export default function RegexMatcher() {
             <p className="text-gray-400 max-w-md mx-auto">
               Test your regex knowledge! Determine if strings match the given patterns.
             </p>
+            {questionCount > 0 && (
+              <p className="text-primary text-sm">
+                {questionCount} questions available
+              </p>
+            )}
             <button onClick={startGame} className="btn-primary flex items-center gap-2 mx-auto">
               <Play size={20} />
               Start Challenge

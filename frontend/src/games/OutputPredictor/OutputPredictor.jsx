@@ -1,10 +1,9 @@
-import { useState } from 'react';
+import { useState, useEffect } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { motion } from 'framer-motion';
 import { ArrowLeft, Play, Code } from 'lucide-react';
 import { useAuthStore } from '@store/authStore';
-import { scoresAPI } from '@services/api';
-import { OUTPUT_QUESTIONS } from './data';
+import { scoresAPI, questionsAPI, answersAPI } from '@services/api';
 import Timer from '../CodeType/components/Timer';
 import Results from './components/Results';
 
@@ -20,30 +19,86 @@ export default function OutputPredictor() {
   const [usedQuestions, setUsedQuestions] = useState([]);
   const [streak, setStreak] = useState(0);
   const [selectedOption, setSelectedOption] = useState(null);
+  const [questionCount, setQuestionCount] = useState(0);
+  const [questions, setQuestions] = useState([]);
+  const [currentQuestionIndex, setCurrentQuestionIndex] = useState(0);
+  const [sessionId] = useState(() => crypto.randomUUID());
+  const [questionStartTime, setQuestionStartTime] = useState(Date.now());
 
-  const startGame = () => {
+  // Fetch question count on mount
+  useEffect(() => {
+    const fetchCount = async () => {
+      try {
+        const res = await questionsAPI.getCount('outputpredictor');
+        setQuestionCount(res.data.count);
+      } catch (error) {
+        console.error('Failed to fetch question count:', error);
+      }
+    };
+    fetchCount();
+  }, []);
+
+  const startGame = async () => {
+    let loadedQuestions = [];
+
+    try {
+      const res = await questionsAPI.getQuestions('outputpredictor', 20);
+      if (res.data.questions && res.data.questions.length > 0) {
+        loadedQuestions = res.data.questions;
+      }
+    } catch (error) {
+      console.error('Failed to load questions:', error);
+      loadedQuestions = [];
+    }
+
+    setQuestions(loadedQuestions);
     setScore(0);
     setTotalAttempts(0);
     setCorrectAttempts(0);
     setUsedQuestions([]);
     setStreak(0);
+    setCurrentQuestionIndex(0);
     setGameState('playing');
-    loadNewQuestion();
-  };
 
-  const loadNewQuestion = () => {
-    const available = OUTPUT_QUESTIONS.filter(q => !usedQuestions.find(used => used.code === q.code));
-    const pool = available.length > 0 ? available : OUTPUT_QUESTIONS;
-    const question = pool[Math.floor(Math.random() * pool.length)];
-    
-    setCurrentQuestion(question);
-    setSelectedOption(null);
-    if (available.length > 0) {
-      setUsedQuestions(prev => [...prev, question]);
+    // Load first question immediately (don't rely on async state update)
+    if (loadedQuestions.length > 0) {
+      const firstQuestion = loadedQuestions[0];
+      const questionData = firstQuestion.data || firstQuestion;
+      setCurrentQuestion({ ...questionData, _id: firstQuestion._id });
+      setSelectedOption(null);
+      setCurrentQuestionIndex(1);
+      setQuestionStartTime(Date.now());
+    } else {
+      setCurrentQuestion(null);
+      setSelectedOption(null);
     }
   };
 
-  const handleAnswer = (selectedAnswer) => {
+  const loadNewQuestion = () => {
+    if (questions.length === 0) {
+      console.error('No questions available');
+      return;
+    }
+
+    if (currentQuestionIndex >= questions.length) {
+      setCurrentQuestionIndex(0);
+    }
+
+    const question = questions[currentQuestionIndex];
+    if (!question) {
+      console.error('Question not found at index:', currentQuestionIndex);
+      return;
+    }
+
+    const questionData = question.data || question;
+
+    setCurrentQuestion({ ...questionData, _id: question._id });
+    setSelectedOption(null);
+    setCurrentQuestionIndex(prev => prev + 1);
+    setQuestionStartTime(Date.now());
+  };
+
+  const handleAnswer = async (selectedAnswer) => {
     if (!currentQuestion || selectedOption !== null) return;
     setTotalAttempts(prev => prev + 1);
     setSelectedOption(selectedAnswer);
@@ -58,6 +113,21 @@ export default function OutputPredictor() {
       setStreak(prev => prev + 1);
     } else {
       setStreak(0);
+    }
+
+    // Submit answer if user is logged in and question is from API
+    if (user && currentQuestion._id) {
+      try {
+        await answersAPI.submit('outputpredictor', {
+          questionId: currentQuestion._id,
+          userAnswer: selectedAnswer,
+          sessionId,
+          timeSpent: Date.now() - questionStartTime,
+          metadata: { streak, isCorrect }
+        });
+      } catch (error) {
+        console.error('Failed to submit answer:', error);
+      }
     }
     
     setTimeout(loadNewQuestion, 700);
@@ -77,6 +147,7 @@ export default function OutputPredictor() {
         accuracy,
         correctAnswers: correctAttempts,
         totalAttempts,
+        metadata: { sessionId }
       }).catch(err => console.error('Failed to submit score:', err));
     }
   };
@@ -116,6 +187,11 @@ export default function OutputPredictor() {
               Test your knowledge of JavaScript's weird and wonderful behavior!
               Predict the console output for each code snippet.
             </p>
+            {questionCount > 0 && (
+              <p className="text-primary text-sm">
+                {questionCount} questions available
+              </p>
+            )}
             <button onClick={startGame} className="btn-primary flex items-center gap-2 mx-auto">
               <Play size={20} />
               Start Challenge

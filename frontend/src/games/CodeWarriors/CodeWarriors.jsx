@@ -1,10 +1,9 @@
-import { useState } from 'react';
+import { useState, useEffect } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { motion } from 'framer-motion';
 import { ArrowLeft } from 'lucide-react';
 import { useAuthStore } from '@store/authStore';
-import { scoresAPI } from '@services/api';
-import { CHARACTERS, QUIZ_QUESTIONS } from './data';
+import { scoresAPI, questionsAPI } from '@services/api';
 import CharacterSelect from './components/CharacterSelect';
 import BattleArena from './components/BattleArena';
 import BattleResults from './components/BattleResults';
@@ -16,6 +15,61 @@ export default function CodeWarriors() {
   const [gameState, setGameState] = useState('select'); // select, battle, finished
   const [players, setPlayers] = useState({ player1: null, player2: null });
   const [battleState, setBattleState] = useState(null);
+  const [questions, setQuestions] = useState({ algorithm: [], database: [], frontend: [] });
+  const [questionCount, setQuestionCount] = useState(0);
+  const [sessionId] = useState(() => crypto.randomUUID());
+
+  // Fetch questions on mount
+  useEffect(() => {
+    const fetchQuestions = async () => {
+      try {
+        const res = await questionsAPI.getQuestions('codewarriors', 100);
+        if (res.data.questions && res.data.questions.length > 0) {
+          // Organize questions by characterType from metadata
+          const organized = {
+            algorithm: [],
+            database: [],
+            frontend: []
+          };
+          
+          res.data.questions.forEach(q => {
+            const questionData = q.data || q;
+            const charType = questionData.characterType || questionData.category || 'algorithm';
+            if (organized[charType]) {
+              organized[charType].push({
+                ...questionData,
+                _id: q._id
+              });
+            }
+          });
+          
+          // Only use API questions if we have questions for all character types
+          if (organized.algorithm.length > 0 || organized.database.length > 0 || organized.frontend.length > 0) {
+            // Merge with local fallback for missing character types
+            setQuestions({
+              algorithm: organized.algorithm.length > 0 ? organized.algorithm : [],
+              database: organized.database.length > 0 ? organized.database : [],
+              frontend: organized.frontend.length > 0 ? organized.frontend : []
+            });
+          }
+        }
+      } catch (error) {
+        console.error('Failed to load questions:', error);
+      }
+    };
+    
+    const fetchCount = async () => {
+      try {
+        const res = await questionsAPI.getCount('codewarriors');
+        setQuestionCount(res.data.count);
+      } catch (error) {
+        console.error('Failed to fetch question count:', error);
+      }
+    };
+    
+    fetchQuestions();
+    fetchCount();
+  }, []);
 
   const selectCharacter = (player, character) => {
     setPlayers(prev => ({ ...prev, [player]: character }));
@@ -41,7 +95,7 @@ export default function CodeWarriors() {
       scoresAPI.submit({
         gameId: 'codewarriors',
         score: winner === 'player1' ? 100 : 50,
-        metadata: { winner, rounds: battleState.round }
+        metadata: { winner, rounds: battleState.round, sessionId }
       }).catch(err => console.error('Failed to submit score:', err));
     }
   };
@@ -75,7 +129,7 @@ export default function CodeWarriors() {
 
       {gameState === 'select' && (
         <CharacterSelect
-          characters={CHARACTERS}
+          characters={[]}
           players={players}
           onSelect={selectCharacter}
           onStart={startBattle}
@@ -86,8 +140,10 @@ export default function CodeWarriors() {
         <BattleArena
           battleState={battleState}
           setBattleState={setBattleState}
-          questions={QUIZ_QUESTIONS}
+          questions={questions}
           onEnd={endBattle}
+          user={user}
+          sessionId={sessionId}
         />
       )}
 

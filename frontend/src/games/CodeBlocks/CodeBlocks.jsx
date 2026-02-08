@@ -1,12 +1,12 @@
-import { useState } from 'react';
+import { useState, useEffect } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { motion } from 'framer-motion';
-import { ArrowLeft, Play } from 'lucide-react';
+import { ArrowLeft, Play, XCircle } from 'lucide-react';
 import { DndContext, closestCenter, PointerSensor, useSensor, useSensors } from '@dnd-kit/core';
 import { SortableContext, verticalListSortingStrategy, arrayMove } from '@dnd-kit/sortable';
+import toast from 'react-hot-toast';
 import { useAuthStore } from '@store/authStore';
-import { scoresAPI } from '@services/api';
-import { CODE_BLOCKS_PROBLEMS } from './data';
+import { scoresAPI, questionsAPI, answersAPI } from '@services/api';
 import Timer from '../CodeType/components/Timer';
 import SortableItem from './components/SortableItem';
 import Results from '../SqlBuilder/components/Results';
@@ -21,6 +21,12 @@ export default function CodeBlocks() {
   const [score, setScore] = useState(0);
   const [correctCount, setCorrectCount] = useState(0);
   const [totalAttempts, setTotalAttempts] = useState(0);
+  const [questionCount, setQuestionCount] = useState(0);
+  const [questions, setQuestions] = useState([]);
+  const [currentQuestionIndex, setCurrentQuestionIndex] = useState(0);
+  const [sessionId] = useState(() => crypto.randomUUID());
+  const [questionStartTime, setQuestionStartTime] = useState(Date.now());
+  const [showIncorrect, setShowIncorrect] = useState(false);
 
   const sensors = useSensors(
     useSensor(PointerSensor, {
@@ -30,21 +36,79 @@ export default function CodeBlocks() {
     })
   );
 
-  const startGame = () => {
+  // Fetch question count on mount
+  useEffect(() => {
+    const fetchCount = async () => {
+      try {
+        const res = await questionsAPI.getCount('codeblocks');
+        setQuestionCount(res.data.count);
+      } catch (error) {
+        console.error('Failed to fetch question count:', error);
+      }
+    };
+    fetchCount();
+  }, []);
+
+  const startGame = async () => {
+    let loadedQuestions = [];
+    
+    try {
+      const res = await questionsAPI.getQuestions('codeblocks', 20);
+      if (res.data.questions && res.data.questions.length > 0) {
+        loadedQuestions = res.data.questions;
+      } else {
+        loadedQuestions = [].map(q => ({ data: q }));
+      }
+    } catch (error) {
+      console.error('Failed to load questions:', error);
+      loadedQuestions = [].map(q => ({ data: q }));
+    }
+
+    setQuestions(loadedQuestions);
     setScore(0);
     setCorrectCount(0);
     setTotalAttempts(0);
+    setCurrentQuestionIndex(0);
     setGameState('playing');
-    loadNewProblem();
+    
+    // Load first question if available
+    if (loadedQuestions.length > 0) {
+      const firstQuestion = loadedQuestions[0];
+      const questionData = firstQuestion.data || firstQuestion;
+      setCurrentProblem({ ...questionData, _id: firstQuestion._id });
+      
+      // Shuffle the blocks
+      const shuffled = [...questionData.blocks].sort(() => Math.random() - 0.5);
+      setUserOrder(shuffled);
+      setCurrentQuestionIndex(1); // Start at 1 since we loaded index 0
+      setQuestionStartTime(Date.now());
+    }
   };
 
   const loadNewProblem = () => {
-    const problem = CODE_BLOCKS_PROBLEMS[Math.floor(Math.random() * CODE_BLOCKS_PROBLEMS.length)];
-    setCurrentProblem(problem);
+    if (questions.length === 0) {
+      console.error('No questions available');
+      return;
+    }
+    
+    if (currentQuestionIndex >= questions.length) {
+      setCurrentQuestionIndex(0);
+    }
+    
+    const question = questions[currentQuestionIndex];
+    if (!question) {
+      console.error('Question not found at index:', currentQuestionIndex);
+      return;
+    }
+    
+    const questionData = question.data || question;
+    setCurrentProblem({ ...questionData, _id: question._id });
     
     // Shuffle the blocks
-    const shuffled = [...problem.blocks].sort(() => Math.random() - 0.5);
+    const shuffled = [...questionData.blocks].sort(() => Math.random() - 0.5);
     setUserOrder(shuffled);
+    setCurrentQuestionIndex(prev => prev + 1);
+    setQuestionStartTime(Date.now());
   };
 
   const handleDragEnd = (event) => {
@@ -59,7 +123,7 @@ export default function CodeBlocks() {
     }
   };
 
-  const checkAnswer = () => {
+  const checkAnswer = async () => {
     setTotalAttempts(prev => prev + 1);
     
     const isCorrect = JSON.stringify(userOrder) === JSON.stringify(currentProblem.blocks);
@@ -67,6 +131,47 @@ export default function CodeBlocks() {
     if (isCorrect) {
       setScore(prev => prev + 15);
       setCorrectCount(prev => prev + 1);
+      toast.success('Correct! Well done! 🎉', {
+        duration: 2000,
+        style: {
+          background: '#10b981',
+          color: '#fff',
+        },
+      });
+    } else {
+      // Show incorrect feedback
+      setShowIncorrect(true);
+      toast.error('Incorrect! Try arranging the blocks again.', {
+        duration: 3000,
+        icon: '❌',
+        style: {
+          background: '#ef4444',
+          color: '#fff',
+        },
+      });
+      
+      // Remove red outline after animation
+      setTimeout(() => {
+        setShowIncorrect(false);
+      }, 1000);
+    }
+
+    // Submit answer if user is logged in and question has ID
+    if (user && currentProblem._id) {
+      try {
+        await answersAPI.submit('codeblocks', {
+          questionId: currentProblem._id,
+          userAnswer: JSON.stringify(userOrder),
+          sessionId,
+          timeSpent: Date.now() - questionStartTime,
+          metadata: { isCorrect, expectedOrder: currentProblem.blocks }
+        });
+      } catch (error) {
+        console.error('Failed to submit answer:', error);
+      }
+    }
+    
+    if (isCorrect) {
       setTimeout(loadNewProblem, 1000);
     }
   };
@@ -85,6 +190,7 @@ export default function CodeBlocks() {
         accuracy,
         correctAnswers: correctCount,
         totalAttempts,
+        metadata: { sessionId }
       }).catch(err => console.error('Failed to submit score:', err));
     }
   };
@@ -124,6 +230,11 @@ export default function CodeBlocks() {
               Arrange code blocks in the correct order to create valid programs.
               Drag and drop to reorder!
             </p>
+            {questionCount > 0 && (
+              <p className="text-primary text-sm">
+                {questionCount} questions available
+              </p>
+            )}
             <button onClick={startGame} className="btn-primary flex items-center gap-2 mx-auto">
               <Play size={20} />
               Start Challenge
@@ -168,12 +279,27 @@ export default function CodeBlocks() {
               </DndContext>
             </div>
 
-            <button
+            <motion.button
               onClick={checkAnswer}
-              className="btn-primary w-full"
+              className={`btn-primary w-full transition-all duration-300 ${
+                showIncorrect 
+                  ? 'ring-4 ring-red-500 bg-red-600 hover:bg-red-700' 
+                  : ''
+              }`}
+              animate={showIncorrect ? {
+                x: [0, -10, 10, -10, 10, 0],
+                transition: { duration: 0.5 }
+              } : {}}
             >
-              Check Answer
-            </button>
+              {showIncorrect ? (
+                <span className="flex items-center justify-center gap-2">
+                  <XCircle className="w-5 h-5" />
+                  Incorrect - Try Again
+                </span>
+              ) : (
+                'Check Answer'
+              )}
+            </motion.button>
           </motion.div>
         )}
 
