@@ -1,13 +1,13 @@
 import { useState, useRef, useEffect } from 'react';
 import { Link, useNavigate, useLocation, useSearchParams } from 'react-router-dom';
 import { useAuthStore } from '@store/authStore';
-import { 
-  User, 
-  LogOut, 
-  Home, 
-  Search, 
-  ChevronDown, 
-  UserCircle, 
+import {
+  User,
+  LogOut,
+  Home,
+  Search,
+  ChevronDown,
+  UserCircle,
   Settings,
   Trophy,
   Zap,
@@ -81,85 +81,98 @@ export default function Navbar() {
   return (
     <>
       {/* Main Navbar */}
-      <nav className="bg-gray-950/95 backdrop-blur-xl border-b border-gray-800/50 sticky top-0 z-50 shadow-2xl shadow-black/20">
+      {/* Main Navbar */}
+      <nav className="fixed top-0 w-full z-50 backdrop-blur-sm bg-transparent transition-all duration-300">
         <div className="container mx-auto px-4 lg:px-6">
           <div className="flex items-center justify-between h-20 gap-4">
-            
+
             {/* Logo */}
-            <Link 
-              to="/games" 
+            <Link
+              to="/games"
               className="flex items-center gap-3 shrink-0 group"
             >
               <div className="relative">
                 <div className="absolute inset-0 bg-gradient-to-r from-primary to-purple-500 rounded-xl blur-lg opacity-50 group-hover:opacity-75 transition-opacity" />
                 <div className="relative bg-gradient-to-br from-primary via-purple-500 to-pink-500 p-2.5 rounded-xl shadow-lg">
-                  <span className="text-2xl">🧪</span>
+                  {/* Empty span removed as per user edit cleaning */}
                 </div>
               </div>
               <div className="hidden sm:block">
                 <span className="text-xl font-black bg-gradient-to-r from-primary via-purple-400 to-pink-400 bg-clip-text text-transparent">
                   OneMinuteLab
                 </span>
-                <div className="text-[10px] text-gray-500 font-medium -mt-1">
+                <div className="text-[10px] text-gray-400 font-medium -mt-1 tracking-wider">
                   LEVEL UP YOUR SKILLS
                 </div>
               </div>
             </Link>
 
             {/* Main Navigation - Desktop */}
-            <div className="hidden lg:flex items-center gap-2">
-              <Link 
-                to="/games" 
-                className={`nav-link ${location.pathname === '/games' ? 'nav-link-active' : ''}`}
+            <div className="hidden lg:flex items-center gap-1 bg-black/20 p-1 rounded-full border border-white/5 backdrop-blur-sm">
+              <Link
+                to="/games"
+                className={`flex items-center gap-2 px-4 py-2 rounded-full text-sm font-medium transition-all ${location.pathname === '/games'
+                  ? 'bg-primary/20 text-primary shadow-[0_0_15px_rgba(var(--primary-rgb),0.3)]'
+                  : 'text-gray-400 hover:text-white hover:bg-white/5'
+                  }`}
               >
-                <Home size={18} />
+                <Home size={16} />
                 <span>Games</span>
               </Link>
-              
-              <Link 
-                to="/leaderboard" 
-                className={`nav-link ${location.pathname === '/leaderboard' ? 'nav-link-active' : ''}`}
+
+              <Link
+                to="/leaderboard"
+                className={`flex items-center gap-2 px-4 py-2 rounded-full text-sm font-medium transition-all ${location.pathname === '/leaderboard'
+                  ? 'bg-primary/20 text-primary shadow-[0_0_15px_rgba(var(--primary-rgb),0.3)]'
+                  : 'text-gray-400 hover:text-white hover:bg-white/5'
+                  }`}
               >
-                <Trophy size={18} />
+                <Trophy size={16} />
                 <span>Leaderboard</span>
               </Link>
-              
+
               {user && (
-                <Link 
-                  to="/achievements" 
-                  className={`nav-link ${location.pathname === '/achievements' ? 'nav-link-active' : ''}`}
+                <Link
+                  to="/achievements"
+                  className={`flex items-center gap-2 px-4 py-2 rounded-full text-sm font-medium transition-all ${location.pathname === '/achievements'
+                    ? 'bg-primary/20 text-primary shadow-[0_0_15px_rgba(var(--primary-rgb),0.3)]'
+                    : 'text-gray-400 hover:text-white hover:bg-white/5'
+                    }`}
                 >
-                  <Star size={18} />
+                  <Star size={16} />
                   <span>Achievements</span>
                 </Link>
               )}
             </div>
 
             {/* Search Bar */}
-            <form onSubmit={handleSearch} className="flex-1 max-w-lg mx-4 hidden md:block">
-              <div className={`relative transition-all duration-300 ${searchFocused ? 'scale-105' : ''}`}>
-                <Search 
-                  className="absolute left-4 top-1/2 -translate-y-1/2 text-gray-400 transition-colors" 
-                  size={18} 
-                />
-                <input
-                  type="search"
-                  placeholder="Search for games, challenges, skills..."
-                  value={searchInput}
-                  onChange={(e) => setSearchInput(e.target.value)}
-                  onFocus={() => setSearchFocused(true)}
-                  onBlur={() => setSearchFocused(false)}
-                  className="w-full bg-gray-900/80 border border-gray-700/50 rounded-xl pl-11 pr-4 py-3 text-sm text-gray-200 placeholder-gray-500 focus:border-primary/50 focus:ring-2 focus:ring-primary/20 outline-none transition-all hover:bg-gray-900 hover:border-gray-600"
-                />
-                {searchInput && (
-                  <button
-                    type="button"
-                    onClick={() => setSearchInput('')}
-                    className="absolute right-4 top-1/2 -translate-y-1/2 text-gray-500 hover:text-gray-300"
-                  >
-                    <X size={16} />
-                  </button>
-                )}
+            <form onSubmit={handleSearch} className="flex-1 max-w-md mx-4 hidden md:block">
+              <div className={`relative group transition-all duration-300 ${searchFocused ? 'scale-105' : ''}`}>
+                <div className="absolute inset-0 bg-gradient-to-r from-primary/20 to-purple-500/20 rounded-full blur transition-opacity opacity-0 group-hover:opacity-100" />
+                <div className="relative">
+                  <Search
+                    className={`absolute left-4 top-1/2 -translate-y-1/2 transition-colors ${searchFocused ? 'text-primary' : 'text-gray-400'}`}
+                    size={16}
+                  />
+                  <input
+                    type="search"
+                    placeholder="Search games..."
+                    value={searchInput}
+                    onChange={(e) => setSearchInput(e.target.value)}
+                    onFocus={() => setSearchFocused(true)}
+                    onBlur={() => setSearchFocused(false)}
+                    className="w-full bg-black/20 border border-white/10 rounded-full pl-10 pr-4 py-2.5 text-sm text-gray-200 placeholder-gray-500 focus:border-primary/50 focus:bg-black/40 focus:ring-0 outline-none transition-all"
+                  />
+                  {searchInput && (
+                    <button
+                      type="button"
+                      onClick={() => setSearchInput('')}
+                      className="absolute right-3 top-1/2 -translate-y-1/2 text-gray-500 hover:text-gray-300"
+                    >
+                      <X size={14} />
+                    </button>
+                  )}
+                </div>
               </div>
             </form>
 
@@ -174,7 +187,7 @@ export default function Navbar() {
                       <span className="text-sm font-bold text-white">{user.totalXP || 0}</span>
                       <span className="text-xs text-gray-400">XP</span>
                     </div>
-                    
+
                     {user.currentStreak > 0 && (
                       <div className="flex items-center gap-2 px-3 py-2 bg-gradient-to-r from-orange-500/10 to-red-500/10 rounded-lg border border-orange-500/20">
                         <Flame size={16} className="text-orange-400" />
@@ -185,7 +198,7 @@ export default function Navbar() {
                   </div>
 
                   {/* Notifications - Coming Soon */}
-                  <button 
+                  <button
                     className="hidden lg:flex relative p-2.5 hover:bg-gray-800/50 rounded-lg transition-colors"
                     title="Notifications"
                   >
@@ -223,9 +236,9 @@ export default function Navbar() {
                         </div>
                       </div>
 
-                      <ChevronDown 
-                        size={16} 
-                        className={`text-gray-400 transition-transform ${profileOpen ? 'rotate-180' : ''}`} 
+                      <ChevronDown
+                        size={16}
+                        className={`text-gray-400 transition-transform ${profileOpen ? 'rotate-180' : ''}`}
                       />
                     </button>
 
@@ -243,7 +256,7 @@ export default function Navbar() {
                               <div className="text-xs text-gray-400">Level {user.level}</div>
                             </div>
                           </div>
-                          
+
                           {/* XP Progress Bar */}
                           <div className="space-y-1">
                             <div className="flex justify-between text-xs text-gray-400">
@@ -251,7 +264,7 @@ export default function Navbar() {
                               <span>{Math.floor(getXPProgress())}%</span>
                             </div>
                             <div className="h-2 bg-gray-800 rounded-full overflow-hidden">
-                              <div 
+                              <div
                                 className="h-full bg-gradient-to-r from-primary to-purple-500 rounded-full transition-all duration-500"
                                 style={{ width: `${getXPProgress()}%` }}
                               />
@@ -285,7 +298,7 @@ export default function Navbar() {
                             <UserCircle size={18} />
                             <span>View Profile</span>
                           </Link>
-                          
+
                           <Link
                             to="/achievements"
                             onClick={() => setProfileOpen(false)}
@@ -294,7 +307,7 @@ export default function Navbar() {
                             <Star size={18} />
                             <span>Achievements</span>
                           </Link>
-                          
+
                           <Link
                             to="/settings"
                             onClick={() => setProfileOpen(false)}
@@ -325,15 +338,15 @@ export default function Navbar() {
               ) : (
                 <>
                   {/* Guest Buttons */}
-                  <Link 
-                    to="/login" 
+                  <Link
+                    to="/login"
                     className="hidden sm:flex items-center gap-2 px-4 py-2.5 rounded-lg border border-gray-700 hover:border-gray-600 text-gray-300 hover:text-white transition-all hover:bg-gray-800/50"
                   >
                     <User size={18} />
                     <span className="font-medium">Login</span>
                   </Link>
-                  <Link 
-                    to="/register" 
+                  <Link
+                    to="/register"
                     className="flex items-center gap-2 px-4 py-2.5 rounded-lg bg-gradient-to-r from-primary to-purple-500 hover:from-primary/90 hover:to-purple-500/90 text-white font-bold transition-all shadow-lg shadow-primary/25 hover:shadow-primary/40 hover:scale-105"
                   >
                     <Zap size={18} fill="currentColor" />
@@ -380,7 +393,7 @@ export default function Navbar() {
                 <Home size={20} />
                 <span>Games</span>
               </Link>
-              
+
               <Link
                 to="/leaderboard"
                 onClick={() => setMobileMenuOpen(false)}

@@ -1,7 +1,7 @@
-import { useState, useMemo, useEffect } from 'react';
+import { useState, useMemo, useEffect, useRef } from 'react';
 import { Link, useSearchParams } from 'react-router-dom';
 import { motion } from 'framer-motion';
-import { Play, Star, Zap } from 'lucide-react';
+import { Play, Star, Zap, ArrowRight, ChevronLeft, ChevronRight } from 'lucide-react';
 import { useAuthStore } from '@store/authStore';
 import { useQuery } from '@tanstack/react-query';
 import { scoresAPI } from '@services/api';
@@ -29,7 +29,6 @@ const GAME_CARD_IMAGE_URLS = {
   terminalmaster: 'https://ik.imagekit.io/cpnei0o4f/Games%20Backgrounds/TerminalMaster.png?tr=w-800,h-450,fo-auto',
 };
 
-// Placeholder images (tiny blur-up versions)
 const GAME_PLACEHOLDERS = {
   apiendpoint: 'https://ik.imagekit.io/cpnei0o4f/Games%20Backgrounds/API%20endpoint%20rush.png?tr=w-20,h-20,bl-10',
   bigochallenge: 'https://ik.imagekit.io/cpnei0o4f/Games%20Backgrounds/BigO%20challenge.png?tr=w-20,h-20,bl-10',
@@ -60,55 +59,26 @@ function getGamePlaceholder(gameId) {
   return GAME_PLACEHOLDERS[gameId] || null;
 }
 
-const CATEGORY_ORDER = [
-  'Featured',
-  'Typing & Code',
-  'Terminal & Git',
-  'Logic & Output',
-  'Web & API',
-  'Algorithms & DS',
-  'Database',
-  'CSS & Design',
-  'Data & Debug',
-];
-
 const GAME_CONFIG = [
-  // ⚔️ FEATURED GAME
-  { id: 'codewarriors', name: 'Code Warriors', icon: '⚔️', badge: '2-Player Battle', featured: true, category: 'Featured', categoryOrder: 0, description: 'Epic coding battles' },
-
-  // ⌨️ TYPING & CODE
-  { id: 'codetype', name: 'CodeType', icon: '⌨️', badge: 'Typing', category: 'Typing & Code', categoryOrder: 1, description: 'Type real code fast' },
-  { id: 'bugspotter', name: 'Bug Spotter', icon: '🐛', badge: 'Debug', category: 'Typing & Code', categoryOrder: 1, description: 'Find bugs quickly' },
-  { id: 'codeblocks', name: 'Code Block Arranger', icon: '🧩', badge: 'Drag & Drop', category: 'Typing & Code', categoryOrder: 1, description: 'Arrange code blocks' },
-
-  // 💻 TERMINAL & GIT
-  { id: 'terminalmaster', name: 'Terminal Master', icon: '💻', badge: 'CLI', category: 'Terminal & Git', categoryOrder: 2, description: 'Master terminal commands' },
-  { id: 'gitcommands', name: 'Git Command Rush', icon: '🔱', badge: 'Git', category: 'Terminal & Git', categoryOrder: 2, description: 'Learn Git commands' },
-
-  // 🔮 LOGIC & OUTPUT
-  { id: 'outputpredictor', name: 'Output Predictor', icon: '🔮', badge: 'Logic', category: 'Logic & Output', categoryOrder: 3, description: 'Predict code output' },
-  { id: 'regexmatcher', name: 'Regex Matcher', icon: '🔍', badge: 'Pattern', category: 'Logic & Output', categoryOrder: 3, description: 'Match regex patterns' },
-  { id: 'binary', name: 'Binary Blitz', icon: '💾', badge: 'Binary', category: 'Logic & Output', categoryOrder: 3, description: 'Binary conversion speed' },
-
-  // 🌐 WEB & API
-  { id: 'httpstatus', name: 'HTTP Status Quiz', icon: '🌐', badge: 'API', category: 'Web & API', categoryOrder: 4, description: 'Know your status codes' },
-  { id: 'apiendpoint', name: 'API Endpoint Rush', icon: '⚡', badge: 'REST', category: 'Web & API', categoryOrder: 4, description: 'Design REST APIs' },
-
-  // 📊 ALGORITHMS & DS
-  { id: 'bigochallenge', name: 'Big-O Challenge', icon: '📊', badge: 'Algorithm', category: 'Algorithms & DS', categoryOrder: 5, description: 'Analyze complexity' },
-  { id: 'datastructure', name: 'Data Structure Builder', icon: '🏗️', badge: 'DS', category: 'Algorithms & DS', categoryOrder: 5, description: 'Build data structures' },
-
-  // 🗃️ DATABASE
-  { id: 'sqlbuilder', name: 'SQL Query Builder', icon: '🗃️', badge: 'Database', category: 'Database', categoryOrder: 6, description: 'Write SQL queries' },
-
-  // 🎨 CSS & DESIGN
-  { id: 'flexbox', name: 'Flexbox Frenzy', icon: '📐', badge: 'CSS', category: 'CSS & Design', categoryOrder: 7, description: 'Master flexbox layouts' },
-  { id: 'cssselector', name: 'CSS Selector Ninja', icon: '🥷', badge: 'CSS', category: 'CSS & Design', categoryOrder: 7, description: 'Target elements precisely' },
-  { id: 'colormatcher', name: 'Color Code Matcher', icon: '🎨', badge: 'Design', category: 'CSS & Design', categoryOrder: 7, description: 'Match color codes' },
-
-  // 🗺️ DATA & DEBUG
-  { id: 'jsonpath', name: 'JSON Path Finder', icon: '🗺️', badge: 'Data', category: 'Data & Debug', categoryOrder: 8, description: 'Navigate JSON paths' },
-  { id: 'debugrace', name: 'Debug Race', icon: '🏁', badge: 'Speed', category: 'Data & Debug', categoryOrder: 8, description: 'Debug at lightning speed' },
+  { id: 'codewarriors', name: 'Code Warriors', icon: '⚔️', badge: '2-Player Battle', featured: true, category: 'Featured', categoryOrder: 0, description: 'Epic coding battles', categoryShort: 'FEATURED' },
+  { id: 'codetype', name: 'CodeType', icon: '⌨️', badge: 'Typing', category: 'Typing & Code', categoryOrder: 1, description: 'Type real code fast', categoryShort: 'TYPING & CODE' },
+  { id: 'bugspotter', name: 'Bug Spotter', icon: '🐛', badge: 'Debug', category: 'Typing & Code', categoryOrder: 1, description: 'Find bugs quickly', categoryShort: 'TYPING & CODE' },
+  { id: 'codeblocks', name: 'Code Block Arranger', icon: '🧩', badge: 'Drag & Drop', category: 'Typing & Code', categoryOrder: 1, description: 'Arrange code blocks', categoryShort: 'TYPING & CODE' },
+  { id: 'terminalmaster', name: 'Terminal Master', icon: '💻', badge: 'CLI', category: 'Terminal & Git', categoryOrder: 2, description: 'Master terminal commands', categoryShort: 'TERMINAL & GIT' },
+  { id: 'gitcommands', name: 'Git Command Rush', icon: '🔱', badge: 'Git', category: 'Terminal & Git', categoryOrder: 2, description: 'Learn Git commands', categoryShort: 'TERMINAL & GIT' },
+  { id: 'outputpredictor', name: 'Output Predictor', icon: '🔮', badge: 'Logic', category: 'Logic & Output', categoryOrder: 3, description: 'Predict code output', categoryShort: 'LOGIC & OUTPUT' },
+  { id: 'regexmatcher', name: 'Regex Matcher', icon: '🔍', badge: 'Pattern', category: 'Logic & Output', categoryOrder: 3, description: 'Match regex patterns', categoryShort: 'LOGIC & OUTPUT' },
+  { id: 'binary', name: 'Binary Blitz', icon: '💾', badge: 'Binary', category: 'Logic & Output', categoryOrder: 3, description: 'Binary conversion speed', categoryShort: 'LOGIC & OUTPUT' },
+  { id: 'httpstatus', name: 'HTTP Status Quiz', icon: '🌐', badge: 'API', category: 'Web & API', categoryOrder: 4, description: 'Know your status codes', categoryShort: 'WEB & API' },
+  { id: 'apiendpoint', name: 'API Endpoint Rush', icon: '⚡', badge: 'REST', category: 'Web & API', categoryOrder: 4, description: 'Design REST APIs', categoryShort: 'WEB & API' },
+  { id: 'bigochallenge', name: 'Big-O Challenge', icon: '📊', badge: 'Algorithm', category: 'Algorithms & DS', categoryOrder: 5, description: 'Analyze complexity', categoryShort: 'ALGORITHMS & DS' },
+  { id: 'datastructure', name: 'Data Structure Builder', icon: '🏗️', badge: 'DS', category: 'Algorithms & DS', categoryOrder: 5, description: 'Build data structures', categoryShort: 'ALGORITHMS & DS' },
+  { id: 'sqlbuilder', name: 'SQL Query Builder', icon: '🗃️', badge: 'Database', category: 'Database', categoryOrder: 6, description: 'Write SQL queries', categoryShort: 'DATABASE' },
+  { id: 'flexbox', name: 'Flexbox Frenzy', icon: '📐', badge: 'CSS', category: 'CSS & Design', categoryOrder: 7, description: 'Master flexbox layouts', categoryShort: 'CSS & DESIGN' },
+  { id: 'cssselector', name: 'CSS Selector Ninja', icon: '🥷', badge: 'CSS', category: 'CSS & Design', categoryOrder: 7, description: 'Target elements precisely', categoryShort: 'CSS & DESIGN' },
+  { id: 'colormatcher', name: 'Color Code Matcher', icon: '🎨', badge: 'Design', category: 'CSS & Design', categoryOrder: 7, description: 'Match color codes', categoryShort: 'CSS & DESIGN' },
+  { id: 'jsonpath', name: 'JSON Path Finder', icon: '🗺️', badge: 'Data', category: 'Data & Debug', categoryOrder: 8, description: 'Navigate JSON paths', categoryShort: 'DATA & DEBUG' },
+  { id: 'debugrace', name: 'Debug Race', icon: '🏁', badge: 'Speed', category: 'Data & Debug', categoryOrder: 8, description: 'Debug at lightning speed', categoryShort: 'DATA & DEBUG' },
 ];
 
 const SORT_OPTIONS = [
@@ -121,99 +91,101 @@ const SORT_OPTIONS = [
 
 const GAME_BY_ID = Object.fromEntries(GAME_CONFIG.map((g) => [g.id, g]));
 
-// Game Card Component
+// Game Card Component - Matching Screenshot Design
 function GameCard({ game, size = 'default', onClick }) {
   const [imageLoaded, setImageLoaded] = useState(false);
+  const [isHovered, setIsHovered] = useState(false);
   const bgUrl = getGameCardImageUrl(game.id);
   const placeholder = getGamePlaceholder(game.id);
-  
   const isSmall = size === 'small';
-  
+
   return (
-    <Link 
-      to={`/game/${game.id}`} 
+    <Link
+      to={`/game/${game.id}`}
       onClick={onClick}
-      className="group block"
+      className="group block h-full"
+      onMouseEnter={() => setIsHovered(true)}
+      onMouseLeave={() => setIsHovered(false)}
     >
-      <div className={`bg-gray-900 rounded-xl overflow-hidden border border-gray-800 hover:border-primary transition-all duration-300 hover:shadow-xl hover:shadow-primary/20 hover:-translate-y-2 ${game.featured ? 'ring-2 ring-primary' : ''}`}>
+      <div className="h-full flex flex-col bg-gradient-to-br from-[#0a1628] via-[#0d1b2a] to-[#1b263b] rounded-2xl overflow-hidden border border-cyan-500/10 hover:border-cyan-400/30 transition-all duration-500 hover:shadow-[0_0_40px_rgba(6,182,212,0.15)] hover:-translate-y-2 relative">
+
+        {/* Animated glow effect on hover */}
+        <div className="absolute inset-0 bg-gradient-to-br from-cyan-500/0 via-cyan-400/0 to-purple-500/0 group-hover:from-cyan-500/5 group-hover:via-cyan-400/5 group-hover:to-purple-500/5 transition-all duration-500 pointer-events-none rounded-2xl" />
+
+        {/* Featured Shine Effect */}
+        {game.featured && (
+          <div className="absolute inset-0 bg-gradient-to-r from-transparent via-cyan-400/10 to-transparent -translate-x-full group-hover:translate-x-full transition-transform duration-1000 pointer-events-none" />
+        )}
+
         {/* Image Section */}
-        <div className={`relative overflow-hidden bg-gray-800 ${isSmall ? 'aspect-video' : 'aspect-video'}`}>
-          {/* Placeholder (blur-up) */}
+        <div className={`relative overflow-hidden ${isSmall ? 'aspect-video' : 'aspect-video'}`}>
+          {/* Placeholder blur-up */}
           {placeholder && !imageLoaded && (
             <img
               src={placeholder}
               alt=""
-              className="absolute inset-0 w-full h-full object-cover blur-xl scale-110"
+              className="absolute inset-0 w-full h-full object-cover blur-2xl scale-110"
               aria-hidden="true"
             />
           )}
-          
+
           {/* Main Image */}
           {bgUrl && (
             <img
               src={bgUrl}
               alt={game.name}
-              className={`absolute inset-0 w-full h-full object-cover transition-all duration-500 ${
-                imageLoaded ? 'opacity-100 scale-100' : 'opacity-0 scale-105'
-              } group-hover:scale-110`}
+              className={`absolute inset-0 w-full h-full object-cover transition-all duration-700 ${imageLoaded ? 'opacity-100 scale-100' : 'opacity-0 scale-105'
+                } group-hover:scale-110`}
               onLoad={() => setImageLoaded(true)}
               loading="lazy"
             />
           )}
-          
-          {/* Gradient Overlay */}
-          <div className="absolute inset-0 bg-gradient-to-t from-black/60 via-transparent to-transparent" />
-          
-          {/* Featured Badge */}
-          {game.featured && (
-            <div className="absolute top-3 right-3 z-10">
-              <div className="flex items-center gap-1 bg-gradient-to-r from-yellow-500 to-orange-500 text-white text-xs font-bold px-3 py-1 rounded-full shadow-lg">
-                <Star size={12} fill="currentColor" />
-                FEATURED
+
+          {/* Gradient Overlay - darker at bottom */}
+          <div className="absolute inset-0 bg-gradient-to-b from-transparent via-[#0a1628]/30 to-[#0a1628]" />
+
+
+
+          {/* Play Button Overlay */}
+          <div className={`absolute inset-0 flex items-center justify-center transition-all duration-300 ${isHovered ? 'opacity-100' : 'opacity-0'
+            }`}>
+            <div className="relative">
+              {/* Pulsing glow ring */}
+              <div className="absolute inset-0 bg-cyan-400/20 rounded-full blur-xl scale-150 animate-pulse" />
+              {/* Play button */}
+              <div className="relative bg-gradient-to-br from-cyan-400 to-cyan-600 rounded-full p-4 shadow-2xl transform transition-transform duration-300 group-hover:scale-110">
+                <Play size={isSmall ? 20 : 28} fill="currentColor" className="text-white ml-0.5" />
               </div>
             </div>
-          )}
-          
-          {/* Play Icon Overlay */}
-          <div className="absolute inset-0 flex items-center justify-center opacity-0 group-hover:opacity-100 transition-opacity duration-300">
-            <div className="bg-primary rounded-full p-4 shadow-2xl transform group-hover:scale-110 transition-transform duration-300">
-              <Play size={isSmall ? 24 : 32} fill="currentColor" className="text-white" />
-            </div>
-          </div>
-          
-          {/* Category Badge (on image) */}
-          <div className="absolute bottom-3 left-3 z-10">
-            <span className="text-2xl filter drop-shadow-lg">{}</span>
           </div>
         </div>
-        
-        {/* Details Section */}
-        <div className={`p-4 ${isSmall ? 'p-3' : 'p-5'} space-y-2`}>
-          {/* Badge */}
-          <div className="flex items-center gap-2">
-            <span className="inline-flex items-center gap-1 text-xs font-medium bg-primary/20 text-primary px-2.5 py-1 rounded-full">
-              <Zap size={12} />
-              {game.badge}
-            </span>
-          </div>
-          
-          {/* Game Name */}
-          <h3 className={`font-bold text-white group-hover:text-primary transition-colors ${isSmall ? 'text-base' : 'text-xl'}`}>
+
+        {/* Content Section - Pulled up into gradient */}
+        <div className={`flex-1 flex flex-col ${isSmall ? 'px-4 pb-4 pt-3' : 'px-5 pb-5 pt-4'} relative -mt-8 z-10`}>
+          {/* Game Title */}
+          <h3 className={`font-bold text-white mb-2 leading-tight ${isSmall ? 'text-base' : 'text-xl'} group-hover:text-cyan-300 transition-colors duration-300`}>
             {game.name}
           </h3>
-          
+
           {/* Description */}
           {!isSmall && (
-            <p className="text-sm text-gray-400 line-clamp-2">
+            <p className="text-sm text-gray-400 leading-relaxed mb-4 flex-1">
               {game.description}
             </p>
           )}
-          
-          {/* Category */}
-          <div className="flex items-center justify-between pt-2">
-            <span className="text-xs text-gray-500">{game.category}</span>
-            <span className="text-xs text-primary opacity-0 group-hover:opacity-100 transition-opacity font-medium">
-              Play now →
+
+          {/* Card Footer: Tag & Play Link */}
+          <div className="flex items-center justify-between pt-3 border-t border-cyan-500/10">
+            {/* Tag (Bottom Left) */}
+            <div className="flex items-center gap-1.5 bg-cyan-500/5 border border-cyan-500/10 px-2 py-0.5 rounded text-[10px] font-medium text-cyan-300/80">
+              <Zap size={10} className="text-cyan-400/80" />
+              {game.badge}
+            </div>
+
+            {/* Play Now Link */}
+            <span className="flex items-center gap-1.5 text-xs font-semibold text-cyan-400 group-hover:text-cyan-300 group-hover:gap-2 transition-all duration-300">
+              Play Now
+              <ArrowRight size={14} className="group-hover:translate-x-1 transition-transform duration-300" />
             </span>
           </div>
         </div>
@@ -224,6 +196,15 @@ function GameCard({ game, size = 'default', onClick }) {
 
 export default function Home() {
   const { user } = useAuthStore();
+  const scrollRef = useRef(null);
+
+  const scroll = (direction) => {
+    if (scrollRef.current) {
+      const { current } = scrollRef;
+      const scrollAmount = direction === 'left' ? -350 : 350;
+      current.scrollBy({ left: scrollAmount, behavior: 'smooth' });
+    }
+  };
   const [searchParams] = useSearchParams();
   const searchQuery = (searchParams.get('q') || '').trim().toLowerCase();
   const [sortBy, setSortBy] = useState('default');
@@ -313,9 +294,7 @@ export default function Home() {
     hidden: { opacity: 0 },
     show: {
       opacity: 1,
-      transition: {
-        staggerChildren: 0.05
-      }
+      transition: { staggerChildren: 0.05 }
     }
   };
 
@@ -325,143 +304,173 @@ export default function Home() {
   };
 
   return (
-    <div className="space-y-8 pb-12">
-      {/* Hero Section */}
-      <motion.div
-        initial={{ opacity: 0, y: -20 }}
-        animate={{ opacity: 1, y: 0 }}
-        className="text-center space-y-4 pt-8"
-      >
-        <h1 className="text-5xl md:text-6xl font-bold bg-gradient-to-r from-primary via-purple-500 to-pink-500 bg-clip-text text-transparent">
-          Welcome to OneMinuteLab
-        </h1>
-        <p className="text-xl text-gray-300 max-w-2xl mx-auto">
-          {user ? `Welcome back, ${user.username}! Ready to level up?` : 'Level up your developer skills in 60 seconds'}
-        </p>
-        
-        {user && (
-          <div className="flex justify-center gap-4 mt-8 flex-wrap">
-            <div className="bg-gray-900 border border-gray-800 rounded-xl p-6 text-center min-w-[140px] hover:border-primary transition-colors">
-              <div className="text-4xl font-bold bg-gradient-to-r from-primary to-purple-500 bg-clip-text text-transparent">{user.level}</div>
-              <div className="text-sm text-gray-400 mt-1">Level</div>
-            </div>
-            <div className="bg-gray-900 border border-gray-800 rounded-xl p-6 text-center min-w-[140px] hover:border-green-500 transition-colors">
-              <div className="text-4xl font-bold bg-gradient-to-r from-green-400 to-emerald-500 bg-clip-text text-transparent">{user.totalXP || 0}</div>
-              <div className="text-sm text-gray-400 mt-1">Total XP</div>
-            </div>
-            <div className="bg-gray-900 border border-gray-800 rounded-xl p-6 text-center min-w-[140px] hover:border-orange-500 transition-colors">
-              <div className="text-4xl font-bold bg-gradient-to-r from-orange-400 to-red-500 bg-clip-text text-transparent">{user.currentStreak || 0}</div>
-              <div className="text-sm text-gray-400 mt-1">Day Streak 🔥</div>
-            </div>
-          </div>
-        )}
-      </motion.div>
+    <div className="min-h-screen">
+      <div className="container mx-auto px-4 py-8 space-y-10">
+        {/* Hero Section */}
+        <motion.div
+          initial={{ opacity: 0, y: -20 }}
+          animate={{ opacity: 1, y: 0 }}
+          className="text-center space-y-4 py-12"
+        >
+          <h1 className="text-5xl md:text-7xl font-black bg-gradient-to-r from-cyan-400 via-blue-500 to-purple-500 bg-clip-text text-transparent drop-shadow-2xl">
+            Start Your Challenge
+          </h1>
+          <p className="text-xl md:text-2xl text-gray-300 max-w-3xl mx-auto font-light">
+            {user ? `Welcome back, ${user.username}! Ready to level up?` : 'Level up your developer skills in 60 seconds'}
+          </p>
+        </motion.div>
 
-      {/* Recently Played */}
-      {recentlyPlayedGames.length > 0 && (
-        <motion.section
+        {/* Recently Played */}
+        {recentlyPlayedGames.length > 0 && (
+          <motion.section
+            initial={{ opacity: 0 }}
+            animate={{ opacity: 1 }}
+            className="space-y-5"
+          >
+            <div className="flex items-center gap-4">
+              <h2 className="text-2xl font-bold text-white">Recently Played</h2>
+              <div className="h-px flex-1 bg-gradient-to-r from-cyan-500/30 to-transparent" />
+            </div>
+
+            <div className="relative group/carousel">
+              {/* Left Button */}
+              <button
+                onClick={() => scroll('left')}
+                className="absolute left-0 top-1/2 -translate-y-1/2 -ml-5 z-20 bg-black/60 hover:bg-cyan-500 text-white p-3 rounded-full backdrop-blur-xl border border-white/10 shadow-xl opacity-0 group-hover/carousel:opacity-100 transition-all duration-300 hover:scale-110"
+                aria-label="Scroll left"
+              >
+                <ChevronLeft size={20} />
+              </button>
+
+              {/* Scroll Container */}
+              <div
+                ref={scrollRef}
+                className="flex gap-5 overflow-x-auto pb-4 scroll-smooth snap-x snap-mandatory px-1 [&::-webkit-scrollbar]:hidden"
+                style={{ scrollbarWidth: 'none', msOverflowStyle: 'none' }}
+              >
+                {recentlyPlayedGames.map((game) => (
+                  <div key={game.id} className="w-72 shrink-0 snap-center">
+                    <GameCard
+                      game={game}
+                      size="small"
+                      onClick={() => handleGameClick(game.id)}
+                    />
+                  </div>
+                ))}
+              </div>
+
+              {/* Right Button */}
+              <button
+                onClick={() => scroll('right')}
+                className="absolute right-0 top-1/2 -translate-y-1/2 -mr-5 z-20 bg-black/60 hover:bg-cyan-500 text-white p-3 rounded-full backdrop-blur-xl border border-white/10 shadow-xl opacity-0 group-hover/carousel:opacity-100 transition-all duration-300 hover:scale-110"
+                aria-label="Scroll right"
+              >
+                <ChevronRight size={20} />
+              </button>
+            </div>
+          </motion.section>
+        )}
+
+        {/* Sort Controls */}
+        {/* Sort Controls - Pill Buttons */}
+        <motion.div
           initial={{ opacity: 0 }}
           animate={{ opacity: 1 }}
           className="space-y-4"
         >
-          <div className="flex items-center justify-between">
-            <h2 className="text-2xl font-bold text-white">Recently Played</h2>
-            <div className="h-1 flex-1 ml-4 bg-gradient-to-r from-primary/50 to-transparent rounded-full" />
-          </div>
-          
-          <div className="flex gap-4 overflow-x-auto pb-4 scrollbar-thin scrollbar-thumb-gray-700 scrollbar-track-transparent">
-            {recentlyPlayedGames.map((game) => (
-              <div key={game.id} className="w-64 shrink-0">
-                <GameCard 
-                  game={game} 
-                  size="small" 
-                  onClick={() => handleGameClick(game.id)} 
-                />
+          <div className="flex items-center justify-between flex-wrap gap-4">
+            {/* Left: Sort Options */}
+            <div className="flex items-center gap-3">
+              <span className="text-sm font-semibold text-gray-400 uppercase tracking-wider">
+
+              </span>
+              <div className="flex items-center gap-2 flex-wrap">
+                {SORT_OPTIONS.map((opt) => (
+                  <button
+                    key={opt.value}
+                    onClick={() => setSortBy(opt.value)}
+                    className={`px-4 py-2 rounded-lg text-sm font-medium transition-all duration-300 ${sortBy === opt.value
+                      ? 'bg-gradient-to-r from-cyan-500 to-blue-600 text-white shadow-lg shadow-cyan-500/30 scale-105'
+                      : 'bg-gradient-to-br from-[#0a1628] to-[#0d1b2a] text-gray-400 border border-cyan-500/20 hover:border-cyan-400/40 hover:text-cyan-300'
+                      }`}
+                  >
+                    {opt.label}
+                  </button>
+                ))}
               </div>
-            ))}
+            </div>
+
+            {/* Right: Game Count */}
+            {filteredGames.length > 0 && (
+              <div className="flex items-center gap-2 px-4 py-2 bg-cyan-500/10 border border-cyan-400/20 rounded-lg backdrop-blur-sm">
+                <div className="w-2 h-2 bg-cyan-400 rounded-full animate-pulse" />
+                <span className="text-sm font-semibold text-cyan-300">
+                  {filteredGames.length} {filteredGames.length === 1 ? 'Game' : 'Games'}
+                </span>
+              </div>
+            )}
           </div>
-        </motion.section>
-      )}
+        </motion.div>
 
-      {/* Sort Controls */}
-      <motion.div
-        initial={{ opacity: 0 }}
-        animate={{ opacity: 1 }}
-        className="flex flex-wrap items-center gap-4"
-      >
-        <span className="text-gray-400 font-medium">Sort by:</span>
-        <select
-          value={sortBy}
-          onChange={(e) => setSortBy(e.target.value)}
-          className="bg-gray-900 border border-gray-700 rounded-lg px-4 py-2.5 text-sm text-gray-200 focus:border-primary focus:ring-2 focus:ring-primary/50 outline-none transition-all cursor-pointer hover:border-gray-600"
+        {/* Games Grid */}
+        <motion.div
+          variants={container}
+          initial="hidden"
+          animate="show"
+          className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4 gap-6"
         >
-          {SORT_OPTIONS.map((opt) => (
-            <option key={opt.value} value={opt.value}>
-              {opt.label}
-            </option>
+          {filteredGames.map((game) => (
+            <motion.div key={game.id} variants={item}>
+              <GameCard
+                game={game}
+                onClick={() => handleGameClick(game.id)}
+              />
+            </motion.div>
           ))}
-        </select>
-        
-        {filteredGames.length > 0 && (
-          <span className="text-sm text-gray-500">
-            {filteredGames.length} {filteredGames.length === 1 ? 'game' : 'games'}
-          </span>
-        )}
-      </motion.div>
-
-      {/* Games Grid */}
-      <motion.div
-        variants={container}
-        initial="hidden"
-        animate="show"
-        className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4 gap-6"
-      >
-        {filteredGames.map((game) => (
-          <motion.div key={game.id} variants={item}>
-            <GameCard 
-              game={game} 
-              onClick={() => handleGameClick(game.id)} 
-            />
-          </motion.div>
-        ))}
-      </motion.div>
-
-      {/* No Results */}
-      {filteredGames.length === 0 && (
-        <motion.div
-          initial={{ opacity: 0 }}
-          animate={{ opacity: 1 }}
-          className="text-center py-16"
-        >
-          <div className="text-6xl mb-4">🔍</div>
-          <h3 className="text-2xl font-bold text-gray-300 mb-2">No games found</h3>
-          <p className="text-gray-500">Try adjusting your search or filters</p>
         </motion.div>
-      )}
 
-      {/* CTA for Non-Logged Users */}
-      {!user && (
-        <motion.div
-          initial={{ opacity: 0, scale: 0.95 }}
-          animate={{ opacity: 1, scale: 1 }}
-          transition={{ delay: 0.3 }}
-          className="bg-gradient-to-r from-primary/20 via-purple-500/20 to-pink-500/20 border border-primary/30 rounded-2xl p-8 text-center"
-        >
-          <h3 className="text-2xl font-bold text-white mb-3">
-            Ready to track your progress?
-          </h3>
-          <p className="text-lg text-gray-300 mb-6 max-w-2xl mx-auto">
-            Create a free account to save your scores, compete on leaderboards, earn achievements, and level up your skills!
-          </p>
-          <Link 
-            to="/register" 
-            className="inline-flex items-center gap-2 bg-primary hover:bg-primary/90 text-white font-bold px-8 py-3 rounded-lg transition-all hover:scale-105 shadow-lg shadow-primary/50"
+        {/* No Results */}
+        {filteredGames.length === 0 && (
+          <motion.div
+            initial={{ opacity: 0 }}
+            animate={{ opacity: 1 }}
+            className="text-center py-20"
           >
-            Get Started Free
-            <Zap size={20} fill="currentColor" />
-          </Link>
-        </motion.div>
-      )}
+            <div className="text-7xl mb-6 opacity-50">🔍</div>
+            <h3 className="text-3xl font-bold text-gray-300 mb-3">No games found</h3>
+            <p className="text-gray-500 text-lg">Try adjusting your search or filters</p>
+          </motion.div>
+        )}
+
+        {/* CTA for Non-Logged Users */}
+        {!user && (
+          <motion.div
+            initial={{ opacity: 0, scale: 0.95 }}
+            animate={{ opacity: 1, scale: 1 }}
+            transition={{ delay: 0.3 }}
+            className="relative overflow-hidden bg-gradient-to-br from-cyan-500/10 via-blue-500/10 to-purple-500/10 border border-cyan-400/20 rounded-3xl p-12 text-center backdrop-blur-sm"
+          >
+            {/* Animated background gradient */}
+            <div className="absolute inset-0 bg-gradient-to-r from-cyan-500/5 via-transparent to-purple-500/5 animate-pulse" />
+
+            <div className="relative z-10">
+              <h3 className="text-3xl font-bold text-white mb-4">
+                Ready to track your progress?
+              </h3>
+              <p className="text-lg text-gray-300 mb-8 max-w-2xl mx-auto">
+                Create a free account to save your scores, compete on leaderboards, earn achievements, and level up your skills!
+              </p>
+              <Link
+                to="/register"
+                className="inline-flex items-center gap-3 bg-gradient-to-r from-cyan-500 to-blue-600 hover:from-cyan-400 hover:to-blue-500 text-white font-bold px-10 py-4 rounded-xl transition-all hover:scale-105 shadow-lg shadow-cyan-500/25 hover:shadow-cyan-400/40"
+              >
+                Get Started Free
+                <Zap size={22} fill="currentColor" />
+              </Link>
+            </div>
+          </motion.div>
+        )}
+      </div>
     </div>
   );
 }
