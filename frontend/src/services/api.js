@@ -28,7 +28,7 @@ api.interceptors.response.use(
   (response) => response,
   (error) => {
     const isAuthEndpoint = error.config?.url?.includes('/auth/login') || error.config?.url?.includes('/auth/register');
-    
+
     if (error.response?.status === 401 && !isAuthEndpoint) {
       // Only logout if it's not a login/register attempt
       useAuthStore.getState().logout();
@@ -89,9 +89,22 @@ export const answersAPI = {
 
 // Analytics API
 export const analyticsAPI = {
-  track: (data) => api.post('/analytics/track', data).catch(() => {}),
-  signup: () => api.post('/analytics/signup').catch(() => {}),
+  track: (data) => api.post('/analytics/track', data).catch(() => { }),
+  signup: () => api.post('/analytics/signup').catch(() => { }),
   summary: () => api.get('/analytics/summary'),
+};
+
+// Leaderboard API
+export const leaderboardAPI = {
+  getGlobal: (params = {}) => api.get('/users/leaderboard', { params }),
+  getGame: (gameId, params = {}) => api.get(`/scores/leaderboard/${gameId}`, { params }),
+};
+
+// Achievements API
+export const achievementsAPI = {
+  getAll: () => api.get('/achievements'),
+  getUserAchievements: () => api.get('/achievements/user'),
+  getUserAchievementsById: (userId) => api.get(`/achievements/user/${userId}`),
 };
 
 export default api;
