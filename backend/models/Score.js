@@ -79,27 +79,30 @@ scoreSchema.index({ gameId: 1, score: -1 }); // For leaderboards
 scoreSchema.index({ userId: 1, createdAt: -1 }); // For user history
 
 // Static method to get user's best score for a game
-scoreSchema.statics.getUserBestScore = async function(userId, gameId) {
+scoreSchema.statics.getUserBestScore = async function (userId, gameId) {
   return this.findOne({ userId, gameId })
     .sort({ score: -1 })
     .limit(1);
 };
 
-// Static method to get leaderboard
-scoreSchema.statics.getLeaderboard = async function(gameId, limit = 10) {
-  return this.aggregate([
+// Static method to get leaderboard with pagination
+scoreSchema.statics.getLeaderboard = async function (gameId, limit = 50, offset = 0) {
+  // Get total count of unique users for this game
+  const uniqueUsers = await this.distinct('userId', { gameId });
+  const totalUsers = uniqueUsers.length;
+
+  const leaderboard = await this.aggregate([
     { $match: { gameId } },
     { $sort: { score: -1, createdAt: 1 } },
     {
       $group: {
         _id: '$userId',
         score: { $first: '$score' },
-        accuracy: { $first: '$accuracy' },
-        wpm: { $first: '$wpm' },
         createdAt: { $first: '$createdAt' }
       }
     },
     { $sort: { score: -1 } },
+    { $skip: offset },
     { $limit: limit },
     {
       $lookup: {
@@ -114,17 +117,26 @@ scoreSchema.statics.getLeaderboard = async function(gameId, limit = 10) {
       $project: {
         _id: 1,
         score: 1,
-        accuracy: 1,
-        wpm: 1,
         createdAt: 1,
-        username: '$user.username'
+        username: '$user.username',
+        avatar: '$user.avatar',
+        level: '$user.level',
+        achievementCount: { $size: '$user.achievements' }
       }
     }
   ]);
+
+  return {
+    data: leaderboard,
+    hasMore: offset + limit < totalUsers,
+    total: totalUsers,
+    offset,
+    limit
+  };
 };
 
 // Static method to get user stats
-scoreSchema.statics.getUserStats = async function(userId) {
+scoreSchema.statics.getUserStats = async function (userId) {
   return this.aggregate([
     { $match: { userId: mongoose.Types.ObjectId(userId) } },
     {

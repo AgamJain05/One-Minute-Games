@@ -10,11 +10,11 @@ import auth from '../middleware/auth.js';
 router.get('/profile', auth, async (req, res) => {
   try {
     const user = await User.findById(req.userId).select('-password');
-    
+
     // Get game statistics
     const scores = await Score.find({ userId: req.userId });
     const gameStats = {};
-    
+
     scores.forEach(score => {
       if (!gameStats[score.gameId]) {
         gameStats[score.gameId] = {
@@ -75,16 +75,40 @@ router.put('/profile', auth, async (req, res) => {
 });
 
 // @route   GET /api/users/leaderboard
-// @desc    Get global leaderboard
+// @desc    Get global leaderboard with pagination
 // @access  Public
 router.get('/leaderboard', async (req, res) => {
   try {
-    const users = await User.find()
-      .select('username avatar level totalXP gamesPlayed')
-      .sort({ totalXP: -1 })
-      .limit(50);
+    const limit = parseInt(req.query.limit) || 50;
+    const offset = parseInt(req.query.offset) || 0;
 
-    res.json(users);
+    // Get total count for hasMore calculation
+    const totalUsers = await User.countDocuments();
+
+    // Get leaderboard with achievement counts
+    const users = await User.aggregate([
+      {
+        $project: {
+          username: 1,
+          avatar: 1,
+          level: 1,
+          totalXP: 1,
+          gamesPlayed: 1,
+          achievementCount: { $size: '$achievements' }
+        }
+      },
+      { $sort: { totalXP: -1 } },
+      { $skip: offset },
+      { $limit: limit }
+    ]);
+
+    res.json({
+      data: users,
+      hasMore: offset + limit < totalUsers,
+      total: totalUsers,
+      offset,
+      limit
+    });
   } catch (error) {
     console.error(error);
     res.status(500).json({ message: 'Server error' });

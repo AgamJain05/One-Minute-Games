@@ -3,6 +3,7 @@ const router = express.Router();
 import Score from '../models/Score.js';
 import User from '../models/User.js';
 import auth from '../middleware/auth.js';
+import { checkAchievements } from '../utils/achievementService.js';
 
 // @route   POST /api/scores
 // @desc    Submit a new score
@@ -26,11 +27,14 @@ router.post('/', auth, async (req, res) => {
     // Update user stats atomically to prevent race conditions
     const xpGain = Math.floor(score / 10); // 1 XP per 10 points
     const today = new Date().toDateString();
-    
+
     // First, get the user to check streak logic
     let user = await User.findById(req.userId);
     const lastPlayed = user.lastPlayedDate ? new Date(user.lastPlayedDate).toDateString() : null;
-    
+
+    // Store previous streak for comeback achievement
+    const previousStreak = user.currentStreak;
+
     // Determine streak update
     let streakUpdate = {};
     if (lastPlayed === today) {
@@ -56,10 +60,16 @@ router.post('/', auth, async (req, res) => {
       },
       { new: true }
     );
-    
+
     // Calculate level after atomic update
     user.calculateLevel();
     await user.save();
+
+    // Check for new achievements
+    const newAchievements = await checkAchievements(req.userId, {
+      score: newScore,
+      previousStreak
+    });
 
     res.status(201).json({
       score: newScore,
@@ -68,7 +78,8 @@ router.post('/', auth, async (req, res) => {
         totalXP: user.totalXP,
         currentStreak: user.currentStreak,
         gamesPlayed: user.gamesPlayed
-      }
+      },
+      achievements: newAchievements // Include newly earned achievements
     });
   } catch (error) {
     console.error(error);
@@ -99,14 +110,16 @@ router.get('/my/:gameId', auth, async (req, res) => {
 });
 
 // @route   GET /api/scores/leaderboard/:gameId
-// @desc    Get leaderboard for a specific game
+// @desc    Get leaderboard for a specific game with pagination
 // @access  Public
 router.get('/leaderboard/:gameId', async (req, res) => {
   try {
-    const limit = parseInt(req.query.limit) || 10;
-    const leaderboard = await Score.getLeaderboard(req.params.gameId, limit);
+    const limit = parseInt(req.query.limit) || 50;
+    const offset = parseInt(req.query.offset) || 0;
 
-    res.json(leaderboard);
+    const result = await Score.getLeaderboard(req.params.gameId, limit, offset);
+
+    res.json(result);
   } catch (error) {
     console.error(error);
     res.status(500).json({ message: 'Server error' });

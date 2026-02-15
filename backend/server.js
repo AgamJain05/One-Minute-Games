@@ -40,36 +40,36 @@ if (!process.env.MONGODB_URI) {
 }
 
 mongoose.connect(process.env.MONGODB_URI)
-.then(async () => {
-  console.log('✅ MongoDB Connected');
-  try {
-    // Ensure indexes reflect latest schema (e.g., sparse unique email)
-    const User = require('./models/User');
-    await User.syncIndexes();
-    await User.init(); // proactively create users collection
+  .then(async () => {
+    console.log('✅ MongoDB Connected');
+    try {
+      // Ensure indexes reflect latest schema (e.g., sparse unique email)
+      const User = require('./models/User');
+      await User.syncIndexes();
+      await User.init(); // proactively create users collection
 
-    // Initialize other collections proactively
-    const Score = require('./models/Score');
-    const AnalyticsEvent = require('./models/AnalyticsEvent');
-    const Answer = require('./models/Answer');
-    
-    // Import question models registry
-    const { QuestionModels } = await import('./models/questions/index.js');
-    
-    await Promise.all([
-      Score.init(),
-      AnalyticsEvent.init(),
-      Answer.init(),
-      // Initialize all question models
-      ...Object.values(QuestionModels).map(Model => Model.init())
-    ]);
-    console.log('✅ User indexes synchronized');
-    console.log('✅ All question models initialized');
-  } catch (e) {
-    console.error('⚠️ Failed to sync indexes:', e.message);
-  }
-})
-.catch((err) => console.error('❌ MongoDB Connection Error:', err));
+      // Initialize other collections proactively
+      const Score = require('./models/Score');
+      const AnalyticsEvent = require('./models/AnalyticsEvent');
+      const Answer = require('./models/Answer');
+
+      // Import question models registry
+      const { QuestionModels } = await import('./models/questions/index.js');
+
+      await Promise.all([
+        Score.init(),
+        AnalyticsEvent.init(),
+        Answer.init(),
+        // Initialize all question models
+        ...Object.values(QuestionModels).map(Model => Model.init())
+      ]);
+      console.log('✅ User indexes synchronized');
+      console.log('✅ All question models initialized');
+    } catch (e) {
+      console.error('⚠️ Failed to sync indexes:', e.message);
+    }
+  })
+  .catch((err) => console.error('❌ MongoDB Connection Error:', err));
 
 // API Routes
 import authRoutes from './routes/auth.js';
@@ -79,6 +79,7 @@ import gameRoutes from './routes/games.js';
 import analyticsRoutes from './routes/analytics.js';
 import questionRoutes from './routes/questions.js';
 import answerRoutes from './routes/answers.js';
+import achievementRoutes from './routes/achievements.js';
 
 app.use('/api/auth', authRoutes);
 app.use('/api/users', userRoutes);
@@ -87,14 +88,15 @@ app.use('/api/games', questionRoutes);
 app.use('/api/games', answerRoutes);
 app.use('/api/games', gameRoutes);
 app.use('/api/analytics', analyticsRoutes);
+app.use('/api/achievements', achievementRoutes);
 
 // PAYMENT ROUTES DISABLED - Uncomment below to re-enable
 // app.use('/api/payment', require('./routes/payment'));
 
 // Health Check
 app.get('/api/health', (req, res) => {
-  res.json({ 
-    status: 'OK', 
+  res.json({
+    status: 'OK',
     timestamp: new Date().toISOString(),
     uptime: process.uptime()
   });
