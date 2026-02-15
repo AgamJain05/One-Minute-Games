@@ -12,7 +12,7 @@ export default function CodeType() {
   const navigate = useNavigate();
   const { user } = useAuthStore();
   const inputRef = useRef(null);
-  
+
   const [gameState, setGameState] = useState('idle'); // idle, playing, finished
   const [currentSnippet, setCurrentSnippet] = useState(null);
   const [userInput, setUserInput] = useState('');
@@ -39,12 +39,12 @@ export default function CodeType() {
   const startGame = async () => {
     try {
       const res = await questionsAPI.getQuestions('codetype', 10);
-  
+
       if (res.data?.questions?.length) {
         setQuestions(res.data.questions);
-  
+
         const firstQuestion = res.data.questions[0];
-  
+
         setCurrentSnippet({
           language: firstQuestion.data?.language || firstQuestion.language,
           code: firstQuestion.data?.code || firstQuestion.code,
@@ -53,23 +53,23 @@ export default function CodeType() {
       } else {
         const snippet =
           localSnippets[Math.floor(Math.random() * localSnippets.length)];
-  
+
         setCurrentSnippet(snippet);
       }
     } catch (error) {
       console.error('Failed to load questions:', error);
-  
+
       const snippet =
         localSnippets[Math.floor(Math.random() * localSnippets.length)];
-  
+
       setCurrentSnippet(snippet);
     }
-  
+
     setUserInput('');
     setStartTime(Date.now());
     setCurrentQuestionIndex(0);
     setGameState('playing');
-  
+
     setTimeout(() => inputRef.current?.focus(), 100);
   };
 
@@ -188,7 +188,7 @@ export default function CodeType() {
             <div className="bg-primary bg-opacity-20 text-primary px-3 py-1 rounded inline-block text-sm">
               {currentSnippet.language}
             </div>
-            
+
             <pre className="bg-dark-bg border-2 border-gray-700 rounded-lg p-4 font-mono text-sm overflow-x-auto">
               <code className="text-cyan-300">{currentSnippet.code}</code>
             </pre>
@@ -202,7 +202,7 @@ export default function CodeType() {
               placeholder="Start typing here..."
               spellCheck={false}
             />
-            
+
             <div className="text-sm text-gray-400 text-center">
               Characters: {userInput.length} / {currentSnippet.code.length}
             </div>

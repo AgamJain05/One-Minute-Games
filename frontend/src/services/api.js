@@ -56,7 +56,19 @@ export const authAPI = {
 
 // Scores API
 export const scoresAPI = {
-  submit: (data) => api.post('/scores', data),
+  submit: async (data) => {
+    const response = await api.post('/scores', data);
+    // Auto-refresh user data to sync XP/level in navbar
+    try {
+      const { refreshUser } = useAuthStore.getState();
+      if (refreshUser) {
+        await refreshUser();
+      }
+    } catch (error) {
+      console.error('Failed to refresh user data:', error);
+    }
+    return response;
+  },
   getMyScores: (gameId) => api.get(`/scores/my/${gameId}`),
   getLeaderboard: (gameId, limit = 10) => api.get(`/scores/leaderboard/${gameId}`, { params: { limit } }),
   getRecent: (limit = 5) => api.get('/scores/recent', { params: { limit } }),

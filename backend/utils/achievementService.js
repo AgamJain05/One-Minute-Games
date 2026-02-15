@@ -397,7 +397,7 @@ async function checkPerformanceAchievements(user, score) {
             case 'leaderboard':
                 // Check if user is in top 10 for this game
                 const leaderboard = await Score.getLeaderboard(score.gameId, req.rank);
-                isEarned = leaderboard.some(entry => entry._id.toString() === user._id.toString());
+                isEarned = leaderboard.data.some(entry => entry._id.toString() === user._id.toString());
                 break;
         }
 
