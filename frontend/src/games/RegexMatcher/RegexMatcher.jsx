@@ -1,7 +1,7 @@
-import { useState, useEffect } from 'react';
+import { useState, useEffect, useCallback, useRef } from 'react';
 import { useNavigate } from 'react-router-dom';
-import { motion } from 'framer-motion';
-import { ArrowLeft, Play, Search } from 'lucide-react';
+import { motion, AnimatePresence } from 'framer-motion';
+import { ArrowLeft, Play, Search, CheckCircle, XCircle } from 'lucide-react';
 import { useAuthStore } from '@store/authStore';
 import { scoresAPI, questionsAPI, answersAPI } from '@services/api';
 import Timer from '../CodeType/components/Timer';
@@ -10,20 +10,24 @@ import Results from '../OutputPredictor/components/Results';
 export default function RegexMatcher() {
   const navigate = useNavigate();
   const { user } = useAuthStore();
-  
+
   const [gameState, setGameState] = useState('idle');
   const [currentQuestion, setCurrentQuestion] = useState(null);
   const [score, setScore] = useState(0);
   const [totalAttempts, setTotalAttempts] = useState(0);
   const [correctAttempts, setCorrectAttempts] = useState(0);
-  const [usedQuestions, setUsedQuestions] = useState([]);
   const [questionCount, setQuestionCount] = useState(0);
   const [questions, setQuestions] = useState([]);
   const [currentQuestionIndex, setCurrentQuestionIndex] = useState(0);
   const [sessionId] = useState(() => crypto.randomUUID());
   const [questionStartTime, setQuestionStartTime] = useState(Date.now());
+  const [isLoading, setIsLoading] = useState(false);
+  const [isAnswering, setIsAnswering] = useState(false);
+  const [lastAnswerCorrect, setLastAnswerCorrect] = useState(null);
 
-  // Fetch question count on mount
+  // Ref to the pending setTimeout so we can cancel it on unmount
+  const nextQuestionTimer = useRef(null);
+
   useEffect(() => {
     const fetchCount = async () => {
       try {
@@ -34,79 +38,84 @@ export default function RegexMatcher() {
       }
     };
     fetchCount();
+
+    return () => {
+      if (nextQuestionTimer.current) clearTimeout(nextQuestionTimer.current);
+    };
   }, []);
 
-  const startGame = async () => {
+  const startGame = useCallback(async () => {
+    if (isLoading) return;
+    setIsLoading(true);
+
     let loadedQuestions = [];
-    
     try {
       const res = await questionsAPI.getQuestions('regexmatcher', 20);
       if (res.data.questions && res.data.questions.length > 0) {
         loadedQuestions = res.data.questions;
-      } else {
-        loadedQuestions = [].map(q => ({ data: q }));
       }
     } catch (error) {
       console.error('Failed to load questions:', error);
-      loadedQuestions = [].map(q => ({ data: q }));
     }
 
     setQuestions(loadedQuestions);
     setScore(0);
     setTotalAttempts(0);
     setCorrectAttempts(0);
-    setUsedQuestions([]);
-    setCurrentQuestionIndex(0);
+    setIsAnswering(false);
+    setLastAnswerCorrect(null);
     setGameState('playing');
-    
-    // Load first question if available
+    setIsLoading(false);
+
     if (loadedQuestions.length > 0) {
-      const firstQuestion = loadedQuestions[0];
-      const questionData = firstQuestion.data || firstQuestion;
-      setCurrentQuestion({ ...questionData, _id: firstQuestion._id });
-      setCurrentQuestionIndex(1); // Start at 1 since we loaded index 0
+      const first = loadedQuestions[0];
+      const questionData = first.data || first;
+      setCurrentQuestion({ ...questionData, _id: first._id });
+      setCurrentQuestionIndex(1);
       setQuestionStartTime(Date.now());
     }
-  };
+  }, [isLoading]);
 
-  const loadNewQuestion = () => {
-    if (questions.length === 0) {
-      console.error('No questions available');
-      return;
-    }
-    
-    if (currentQuestionIndex >= questions.length) {
-      setCurrentQuestionIndex(0);
-    }
-    
-    const question = questions[currentQuestionIndex];
-    if (!question) {
-      console.error('Question not found at index:', currentQuestionIndex);
-      return;
-    }
-    
+  // Use a ref to keep a stable reference to the questions array so loadNewQuestion
+  // never captures a stale closure — avoids the wrap-around freeze bug.
+  const questionsRef = useRef(questions);
+  useEffect(() => { questionsRef.current = questions; }, [questions]);
+
+  const loadNewQuestion = useCallback((nextIndex) => {
+    const qs = questionsRef.current;
+    if (qs.length === 0) return;
+
+    // Compute the actual index to load, wrapping around without relying on async state
+    const safeIndex = nextIndex >= qs.length ? 0 : nextIndex;
+    const question = qs[safeIndex];
+    if (!question) return;
+
     const questionData = question.data || question;
     setCurrentQuestion({ ...questionData, _id: question._id });
-    setCurrentQuestionIndex(prev => prev + 1);
+    setCurrentQuestionIndex(safeIndex + 1);
     setQuestionStartTime(Date.now());
-  };
+    setIsAnswering(false);
+    setLastAnswerCorrect(null);
+  }, []);
 
-  const handleAnswer = async (userAnswer) => {
-    setTotalAttempts(prev => prev + 1);
-    
+  const handleAnswer = useCallback(async (userAnswer) => {
+    if (isAnswering || !currentQuestion) return;
+    setIsAnswering(true);
+
     const isCorrect = userAnswer === currentQuestion.matches;
-    
+    setLastAnswerCorrect(isCorrect);
+    setTotalAttempts(prev => prev + 1);
+
     if (isCorrect) {
       setScore(prev => prev + 10);
       setCorrectAttempts(prev => prev + 1);
     }
 
-    // Submit answer if user is logged in and question has ID
     if (user && currentQuestion._id) {
       try {
         await answersAPI.submit('regexmatcher', {
           questionId: currentQuestion._id,
-          userAnswer: userAnswer,
+          userAnswer,
           sessionId,
           timeSpent: Date.now() - questionStartTime,
           metadata: { isCorrect, pattern: currentQuestion.pattern?.toString(), string: currentQuestion.string }
@@ -115,13 +124,16 @@ export default function RegexMatcher() {
         console.error('Failed to submit answer:', error);
       }
     }
-    
-    setTimeout(loadNewQuestion, 500);
-  };
 
-  const endGame = () => {
-    const accuracy = totalAttempts > 0 
-      ? Math.round((correctAttempts / totalAttempts) * 100) 
+    // Pass the next index explicitly so loadNewQuestion never reads stale state
+    const nextIdx = currentQuestionIndex;
+    nextQuestionTimer.current = setTimeout(() => loadNewQuestion(nextIdx), 600);
+  }, [isAnswering, currentQuestion, currentQuestionIndex, user, sessionId, questionStartTime, loadNewQuestion]);
+
+  const endGame = useCallback(() => {
+    if (nextQuestionTimer.current) clearTimeout(nextQuestionTimer.current);
+    const accuracy = totalAttempts > 0
+      ? Math.round((correctAttempts / totalAttempts) * 100)
       : 0;
 
     setGameState('finished');
@@ -136,7 +148,7 @@ export default function RegexMatcher() {
         metadata: { sessionId }
       }).catch(err => console.error('Failed to submit score:', err));
     }
-  };
+  }, [totalAttempts, correctAttempts, score, user, sessionId]);
 
   return (
     <div className="max-w-4xl mx-auto space-y-6">
@@ -177,9 +189,22 @@ export default function RegexMatcher() {
                 {questionCount} questions available
               </p>
             )}
-            <button onClick={startGame} className="btn-primary flex items-center gap-2 mx-auto">
-              <Play size={20} />
-              Start Challenge
+            <button
+              onClick={startGame}
+              disabled={isLoading}
+              className="btn-primary flex items-center gap-2 mx-auto disabled:opacity-60 disabled:cursor-not-allowed"
+            >
+              {isLoading ? (
+                <>
+                  <span className="w-4 h-4 border-2 border-white/30 border-t-white rounded-full animate-spin" />
+                  Loading...
+                </>
+              ) : (
+                <>
+                  <Play size={20} />
+                  Start Challenge
+                </>
+              )}
             </button>
           </motion.div>
         )}
@@ -195,7 +220,7 @@ export default function RegexMatcher() {
             <div className="card bg-primary bg-opacity-10 border-primary">
               <h3 className="text-lg font-semibold mb-3">Pattern:</h3>
               <code className="text-2xl text-cyan-400 font-mono block p-4 bg-dark-bg rounded">
-                {currentQuestion.pattern.toString()}
+                {currentQuestion.pattern?.toString() ?? '—'}
               </code>
             </div>
 
@@ -206,24 +231,56 @@ export default function RegexMatcher() {
               </code>
             </div>
 
-            <div className="text-center text-lg font-semibold text-gray-300 my-4">
-              Does the string match the pattern?
-            </div>
+            {/* Inline answer feedback */}
+            <AnimatePresence mode="wait">
+              {isAnswering && lastAnswerCorrect !== null && (
+                <motion.div
+                  key={lastAnswerCorrect ? 'correct' : 'incorrect'}
+                  initial={{ opacity: 0, y: -8 }}
+                  animate={{ opacity: 1, y: 0 }}
+                  exit={{ opacity: 0 }}
+                  className={`flex items-center justify-center gap-2 text-lg font-semibold py-2 rounded-lg ${
+                    lastAnswerCorrect
+                      ? 'text-green-400 bg-green-400/10'
+                      : 'text-red-400 bg-red-400/10'
+                  }`}
+                >
+                  {lastAnswerCorrect ? (
+                    <><CheckCircle size={20} /> Correct!</>
+                  ) : (
+                    <><XCircle size={20} /> Incorrect</>
+                  )}
+                </motion.div>
+              )}
+
+              {!isAnswering && (
+                <motion.div
+                  key="prompt"
+                  initial={{ opacity: 0 }}
+                  animate={{ opacity: 1 }}
+                  className="text-center text-lg font-semibold text-gray-300 my-4"
+                >
+                  Does the string match the pattern?
+                </motion.div>
+              )}
+            </AnimatePresence>
 
             <div className="grid grid-cols-2 gap-4">
               <motion.button
-                whileHover={{ scale: 1.05 }}
-                whileTap={{ scale: 0.95 }}
+                whileHover={!isAnswering ? { scale: 1.05 } : {}}
+                whileTap={!isAnswering ? { scale: 0.95 } : {}}
                 onClick={() => handleAnswer(true)}
-                className="btn-primary text-lg py-4"
+                disabled={isAnswering}
+                className="btn-primary text-lg py-4 disabled:opacity-50 disabled:cursor-not-allowed transition-opacity"
               >
                 ✅ Yes, it matches
               </motion.button>
               <motion.button
-                whileHover={{ scale: 1.05 }}
-                whileTap={{ scale: 0.95 }}
+                whileHover={!isAnswering ? { scale: 1.05 } : {}}
+                whileTap={!isAnswering ? { scale: 0.95 } : {}}
                 onClick={() => handleAnswer(false)}
-                className="btn-secondary text-lg py-4"
+                disabled={isAnswering}
+                className="btn-secondary text-lg py-4 disabled:opacity-50 disabled:cursor-not-allowed transition-opacity"
               >
                 ❌ No, it doesn't
               </motion.button>
@@ -232,7 +289,7 @@ export default function RegexMatcher() {
         )}
 
         {gameState === 'finished' && (
-          <Results 
+          <Results
             score={score}
             correct={correctAttempts}
             total={totalAttempts}
@@ -245,8 +302,3 @@ export default function RegexMatcher() {
     </div>
   );
 }
-
-
-
-
-
